@@ -1,22 +1,44 @@
 """
 Description: This file contains the code for Passivebot's Facebook Marketplace Scraper API.
-Date: 2024-01-24
+Date Created: 2024-01-24
 Author: Harminder Nijjar
-Version: 1.0.0.
+Version: 1.0.1.
 Usage: python app.py
 """
 
-import os
-import time
-import uvicorn
 
-from playwright.sync_api import sync_playwright
-from bs4 import BeautifulSoup, element
-from fastapi import HTTPException, FastAPI, Response
-from fastapi.middleware.cors import CORSMiddleware
+import os       # Used to get the environment variables.
+import time     # Used to add a delay to the script.
+import uvicorn  # Used to run the API.
+import logging  # For terminal info and debugging
+
+from bs4 import BeautifulSoup, element          # Used to parse the HTML.
+from dotenv import load_dotenv                  # Used to load username and password securely
+from playwright.sync_api import sync_playwright # Used to crawl the Facebook Marketplace.
+
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
-from models import CITIES, FBClassBullshit, MARKETPLACE_URL, INITIAL_URL
+from cities import CITIES
+
+from models import FBClassBullshit, MARKETPLACE_URL, INITIAL_URL
+
+# Retrieve sensitive data from environment variables
+load_dotenv()
+FB_USER = os.getenv('FB_USER')
+FB_PASSWORD = os.getenv('FB_PASSWORD')
+HOST = os.getenv('HOST', "127.0.0.1")
+PORT = int(os.getenv("PORT", 8000))
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+logger = logging.getLogger(__name__)
+
 
 # Create an instance of the FastAPI class.
 app = FastAPI()
@@ -35,7 +57,7 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
-
+# Route to the root endpoint.
 @app.get("/")
 def root() -> Response:
     """Homepage"""
@@ -52,12 +74,12 @@ def crawl_facebook_marketplace(city: str, query: str, max_price: int) -> JSONRes
     """Get fb marketplace listing information"""
 
     # If the city is not in the cities dictionary...
-    if city not in CITIES:
+    if city not in CITIES.keys():
         city = city.capitalize()
         # Raise an HTTPException.
         raise HTTPException(
             404,
-            f"{city} is not a city we are currently supporting on the Facebook Marketplace. \
+            f"Location {city} is not a city we are currently supporting on the Facebook Marketplace. \
                 Please reach out to us to add this city in our directory.",
         )
     inputs = (city, query, max_price)
@@ -69,73 +91,107 @@ def crawl_facebook_marketplace(city: str, query: str, max_price: int) -> JSONRes
         # Open a new browser page.
         browser = p.firefox.launch(headless=False)
         page = browser.new_page()
-        # Navigate to the URL.
-        page.goto(INITIAL_URL)
-        # Wait for the page to load.
-        time.sleep(2)
 
-        if user := page.wait_for_selector('input[name="email"]'):
-            user.fill(os.environ["FB_USER"])
-        if pw := page.wait_for_selector('input[name="pass"]'):
-            pw.fill(os.environ["FB_PW"])
-
-        time.sleep(2)
-        if login := page.wait_for_selector('button[name="login"]'):
-            login.click()
-
-        time.sleep(2)
+        # Go to page and wait for it to load
+        logger.info(f"Opening {marketplace_url}")
         page.goto(marketplace_url)
+        page.wait_for_load_state()
 
-        # Wait for the page to load.
-        time.sleep(2)
-        for _ in range(10):
-            page.keyboard.press("End")
-            time.sleep(2)
         html = page.content()
         soup = BeautifulSoup(html, "html.parser")
-        parsed = []
+
+        # Attempt login if prompted
+        login_attempts = 0
+        while soup.find("div", id="loginform") and login_attempts < 3:
+            login_attempts += 1
+            attempt_login(page)
+            page.wait_for_load_state()
+
+            html = page.content()
+            soup = BeautifulSoup(html, "html.parser")
+
+        # close optional login popup
+        close_button = page.query_selector('div[aria-label="Close"][role="button"]')
+        if close_button:
+            close_button.click()
+            page.wait_for_load_state()
+            time.sleep(0.5)
+            html = page.content()
+            soup = BeautifulSoup(html, "html.parser")
+
+        # for _ in range(10):
+        #     page.keyboard.press("End")
+        #     page.wait_for_load_state('networkidle')
+        # html = page.content()
+        # soup = BeautifulSoup(html, "html.parser")
+
+        logger.debug("Finding listings...")
         listings: list[element.Tag] = soup.find_all(
             "div", class_=FBClassBullshit.LISTINGS.value
         )
-        for i, listing in enumerate(listings):
-            result: dict[str, str | list[str] | None] = {
-                "image": None,
-                "title": None,
-                "price": None,
-                "post_url": None,
-                "location": None,
-            }
-            # Text Elements
-            for item in (
-                FBClassBullshit.TITLE,
-                FBClassBullshit.LOCATION,
-                FBClassBullshit.PRICE,
-            ):
-                if html_text := listing.find("span", item.value):
-                    result[item.name.lower()] = html_text.text
+        parsed_json = parse_listings(listings)
 
-            # Get the item image.
-            if image := listing.find("img", class_=FBClassBullshit.IMAGE.value):
-                if isinstance(image, element.Tag):
-                    result["image"] = image.get("src")
-
-            # Get the item URL.
-            if post_url := listing.find("a", class_=FBClassBullshit.URL.value):
-                if isinstance(post_url, element.Tag):
-                    result["post_url"] = post_url.get("href")
-
-            # Append the parsed data to the list.
-            if any(result.values()):
-                parsed.append(result)
-            else:
-                print(f"Couldn't parse listing number {i}")
-                with open("docs/failed_listing.html", "a", encoding="utf-8") as file:
-                    if listing.string:
-                        file.write(listing.string)
-                        file.write("\n------------------\n")
-        # Close the browser.
+        logger.debug("Closing browser and returning JSON")
         browser.close()
-        return JSONResponse(parsed)
+        return JSONResponse(parsed_json)
+
+
+def attempt_login(page):
+    """Enters login info into the prompt"""
+    logger.info("Attempting to login...")
+    if user := page.wait_for_selector('input[name="email"]'):
+        user.fill(FB_USER)
+    time.sleep(0.5)
+    if pw := page.wait_for_selector('input[name="pass"]'):
+        pw.fill(FB_PASSWORD)
+    time.sleep(1)
+    if login := page.wait_for_selector('button[name="login"]'):
+        login.click()
+
+
+def parse_listings(listings):
+    """Unfiltered listings"""
+    parsed = []
+    for i, listing in enumerate(listings):
+        result: dict[str, str | list[str] | None] = {
+            "image": None,
+            "title": None,
+            "price": None,
+            "post_url": None,
+            "location": None,
+        }
+        # Get the text Elements
+        for item in (
+            FBClassBullshit.TITLE,
+            FBClassBullshit.LOCATION,
+            FBClassBullshit.PRICE,
+        ):
+            if html_text := listing.find("span", item.value):
+                result[item.name.lower()] = html_text.text
+
+        # Get the item image.
+        if image := listing.find("img", class_=FBClassBullshit.IMAGE.value):
+            if isinstance(image, element.Tag):
+                result["image"] = image.get("src")
+
+        # Get the item URL.
+        if post_url := listing.find("a", class_=FBClassBullshit.URL.value):
+            if isinstance(post_url, element.Tag):
+                result["post_url"] = post_url.get("href")
+
+        # Append the parsed data to the list.
+        if any(result.values()):
+            logger.debug(f"Found listing: {result['title']}")
+            parsed.append(result)
+        else:
+            logger.warning(f"Couldn't parse listing number {i}")
+            with open("docs/failed_listing.html", "a", encoding="utf-8") as file:
+                if listing.string:
+                    file.write(listing.string)
+                    file.write("\n------------------\n")
+
+    logger.info(f'Parsed {len(parsed)} listings.')
+    return parsed
 
 
 @app.get("/return_ip_information")
@@ -153,7 +209,7 @@ def return_ip_information() -> JSONResponse:
     # Initialize the session using Playwright.
     with sync_playwright() as p:
         # Open a new browser page.
-        browser = p.chromium.launch()
+        browser = p.firefox.launch()
         page = browser.new_page()
         # Navigate to the URL.
         page.goto("https://www.ipburger.com/")
@@ -195,6 +251,7 @@ if __name__ == "__main__":
     uvicorn.run(
         # Specify the app as the FastAPI app.
         "app:app",
-        host="127.0.0.1",
-        port=8000,
+        host = HOST,
+        port = PORT,
+        log_level = "debug"
     )

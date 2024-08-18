@@ -2,6 +2,7 @@ beautifulsoup4==4.12.2
 fastapi==0.108.0
 Pillow==10.2.0
 playwright==1.40.0
+python-dotenv==1.0.1
 Requests==2.31.0
-streamlit==1.30.0
+streamlit==1.29.0
 uvicorn==0.25.0
