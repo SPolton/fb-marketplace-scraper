@@ -2,6 +2,7 @@
 # https://m.facebook.com/marketplace/directory/US/?_se_imp=0oey5sMRMSl7wluQZ
 # TODO - Add more cities to the dictionary.
 CITIES = {
+    'Any': 'category',
     'New York': 'nyc',
     'Los Angeles': 'la',
     'Las Vegas': 'vegas',

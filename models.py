@@ -18,7 +18,7 @@ CATEGORIES = [
     "Vehicles",
     "Apparel",
     "Classifieds",
-    "Electronics"
+    "Electronics",
     "Entertainment",
     "Family",
     "Free",
@@ -36,6 +36,7 @@ CATEGORIES = [
 ]
 
 SORT = {
+    "None": None,
     "Price: Lowset first":"price_ascend",
     "Price: Highest first": "price_descend",
     "Date listed: Newest first": "creation_time_descend",

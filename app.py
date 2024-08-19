@@ -1,10 +1,10 @@
 """
 Description: This file contains the code for Passivebot's Facebook Marketplace Scraper API.
 Date Created: 2024-01-24
-Date Modified: 2024-08-18
+Date Modified: 2024-08-19
 Author: Harminder Nijjar
 Modified by: SPolton
-Version: 1.1.0
+Version: 1.2.0
 Usage: python app.py
 """
 
@@ -18,7 +18,7 @@ from bs4 import BeautifulSoup, element          # Used to parse the HTML.
 from dotenv import load_dotenv                  # Used to load username and password securely
 from playwright.sync_api import sync_playwright # Used to crawl the Facebook Marketplace.
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -74,13 +74,12 @@ def root() -> Response:
 @app.get("/crawl_facebook_marketplace")
 def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResponse:
     """Get fb marketplace listing information"""
-    print(); logger.info("Recieving Request: crawl_facebook_marketplace")
     logger.debug(f"Params: {city}, {category}, {query}")
 
     if category=="TEST":
         time.sleep(1)
         return JSONResponse([{
-            "image": "img.png",
+            "image": None,
             "title": "Test",
             "price": "100",
             "post_url": "URL",
@@ -114,6 +113,7 @@ def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResp
             login_attempts += 1
             attempt_login(page)
             page.wait_for_load_state()
+            time.sleep(0.5)
 
             html = page.content()
             soup = BeautifulSoup(html, "html.parser")
@@ -138,7 +138,7 @@ def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResp
         )
         parsed_json = parse_listings(listings)
 
-        logger.debug("Closing browser and returning JSON")
+        logger.debug("Closing browser and returning JSON\n")
         browser.close()
         return JSONResponse(parsed_json)
 
@@ -201,7 +201,7 @@ def parse_listings(listings):
                 else:
                     logger.debug(f"Listing {i} has no text")
 
-    logger.info(f'Parsed {len(parsed)} listings.\n')
+    logger.info(f'Parsed {len(parsed)} listings.')
     return parsed
 
 

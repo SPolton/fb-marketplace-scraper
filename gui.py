@@ -1,10 +1,10 @@
 """
 Description: This file contains the GUI code for Passivebot's Facebook Marketplace Scraper.
 Date Created: 2024-01-24
-Date Modified: 2024-08-18
+Date Modified: 2024-08-19
 Author: Harminder Nijjar
 Modified by: SPolton
-Version: 1.1.0
+Version: 1.2.0
 Usage: steamlit run gui.py
 """
 
@@ -22,49 +22,85 @@ load_dotenv()
 HOST = os.getenv('HOST', "127.0.0.1")
 PORT = int(os.getenv('PORT', 8000))
 
-API_BASE_URL = f"http://{HOST}:{PORT}/crawl_facebook_marketplace"
+API_URL_BASE = f"http://{HOST}:{PORT}"
+API_URL_CRAWL = API_URL_BASE + "/crawl_facebook_marketplace"
+
+
+def api_crawl_params():
+    """Returns the unencoded url params needed for api crawl, based on user query"""
+    terms = []
+    if query and query != "":
+        terms.append(f"query={query}")
+    if sort:
+        terms.append(f"sortBy={sort}")
+    if min_price and min_price > 0:
+        terms.append(f"minPrice={min_price}")
+    if max_price:
+        terms.append(f"maxPrice={max_price}")
+
+    # "itemCondition=new,used_good"
+    # for cond in condition_values:
+    #     pass
+
+    params = {
+        "city": city,
+        "category": category,
+        "query": "&".join(terms)
+    }
+    return params
+
 
 # Create a title for the web app.
 st.title("Facebook Marketplace Scraper")
 
 # Take user input for the city, category, and various queries.
-city_id = st.selectbox("City", CITIES.keys(), 0)
-city = CITIES[city_id]
+error_present = False
 
-category_id = st.selectbox("Category", CATEGORIES, 0)
-category = category_id.replace(" ","").lower()
+col = st.columns(2)
+with col[0]:
+    city_name = st.selectbox("City", CITIES.keys(), 0)
+    city = CITIES[city_name]
 
-query = st.text_input("Query", "iPhone")
+with col[1]:
+    category_id = st.selectbox("Category", CATEGORIES, 0)
+    category = category_id.replace(" ","").lower()
 
-sort_id = st.selectbox("Sort By", SORT.keys(), 2)
+if category == "search":
+    query = st.text_input("Query", "iPhone")
+
+sort_id = st.selectbox("Sort By", SORT.keys(), 3)
 sort = SORT[sort_id]
 
-max_price = st.number_input("Max Price", min_value=0, format="%d", value=1000)
+col = st.columns(2)
+with col[0]:
+    # Price inputs in drawer
+    with st.expander("Price"):
+        p_col = st.columns(2)
+        with p_col[0]:
+            min_price = st.number_input("Min Price", min_value=0, format="%d", value=0)
+        with p_col[1]:
+            max_price = st.number_input("Max Price", min_value=0, format="%d", value=None)
+        if max_price and max_price < min_price:
+            error_present = True
+            st.error("Max Price less than Min price.")
 
-# Create columns for checkboxes and display
-# columns = st.columns(len(CONDITION))
-# checkbox_values = []
-# for i, condition in enumerate(CONDITION):
-#     with columns[i]:
-#         checkbox_values.append(st.checkbox(condition))
+# with col[1]:
+#     # Contition checkboxes in drawer
+#     condition_values = []
+#     with st.expander("Condition"):
+#         for i, condition in enumerate(CONDITION):
+#             condition_values.append(st.checkbox(condition))
 
-# Create a button to submit the form.
-submit = st.button("Submit")
+# Button to submit the form.
+submit = st.button("Submit", disabled=error_present)
 
 # If the button is clicked.
 if submit:
-    params = {
-        "city": city,
-        "category": category,
-        "query": f"query={query}&sortBy={sort}&maxPrice={max_price}"
-    }
-
     # Encode the parameters
-    encoded_params = urlencode(params)
-    url = f"{API_BASE_URL}?{encoded_params}"
+    encoded_params = urlencode(api_crawl_params())
+    url = f"{API_URL_CRAWL}?{encoded_params}"
 
-    print(f"\nRequesting URL: {url}\n")
-    st.info(f"Request URL: {url}")
+    print(f"\nAPI URL: {url}\n")
     res = requests.get(url, timeout=60)
 
     try:
