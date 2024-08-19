@@ -1,8 +1,10 @@
 """
 Description: This file contains the code for Passivebot's Facebook Marketplace Scraper API.
 Date Created: 2024-01-24
+Date Modified: 2024-08-18
 Author: Harminder Nijjar
-Version: 1.0.1.
+Modified by: SPolton
+Version: 1.1.0
 Usage: python app.py
 """
 
@@ -22,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from cities import CITIES
 
-from models import FBClassBullshit, MARKETPLACE_URL, INITIAL_URL
+from models import FBClassBullshit, MARKETPLACE_URL
 
 # Retrieve sensitive data from environment variables
 load_dotenv()
@@ -70,30 +72,36 @@ def root() -> Response:
 
 
 @app.get("/crawl_facebook_marketplace")
-def crawl_facebook_marketplace(city: str, query: str, max_price: int) -> JSONResponse:
+def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResponse:
     """Get fb marketplace listing information"""
+    print(); logger.info("Recieving Request: crawl_facebook_marketplace")
+    logger.debug(f"Params: {city}, {category}, {query}")
 
-    # If the city is not in the cities dictionary...
-    if city not in CITIES.keys():
-        city = city.capitalize()
-        # Raise an HTTPException.
-        raise HTTPException(
-            404,
-            f"Location {city} is not a city we are currently supporting on the Facebook Marketplace. \
-                Please reach out to us to add this city in our directory.",
-        )
-    inputs = (city, query, max_price)
+    if category=="TEST":
+        time.sleep(1)
+        return JSONResponse([{
+            "image": "img.png",
+            "title": "Test",
+            "price": "100",
+            "post_url": "URL",
+            "location": city,
+        }])
+    
     # Define the URL to scrape.
+    inputs = (city, category, query)
     marketplace_url = MARKETPLACE_URL.format(*inputs)
+    logger.info(f"Using marketplace URL: {marketplace_url}")
+
     # Get listings of particular item in a particular city for a particular price.
     # Initialize the session using Playwright.
     with sync_playwright() as p:
         # Open a new browser page.
+        logger.debug("Opening browser")
         browser = p.firefox.launch(headless=False)
         page = browser.new_page()
 
         # Go to page and wait for it to load
-        logger.info(f"Opening {marketplace_url}")
+        logger.debug(f"Opening {marketplace_url}")
         page.goto(marketplace_url)
         page.wait_for_load_state()
 
@@ -125,7 +133,6 @@ def crawl_facebook_marketplace(city: str, query: str, max_price: int) -> JSONRes
         # html = page.content()
         # soup = BeautifulSoup(html, "html.parser")
 
-        logger.debug("Finding listings...")
         listings: list[element.Tag] = soup.find_all(
             "div", class_=FBClassBullshit.LISTINGS.value
         )
@@ -151,6 +158,7 @@ def attempt_login(page):
 
 def parse_listings(listings):
     """Unfiltered listings"""
+    logger.info("Parsing listings...")
     parsed = []
     for i, listing in enumerate(listings):
         result: dict[str, str | list[str] | None] = {
@@ -181,16 +189,19 @@ def parse_listings(listings):
 
         # Append the parsed data to the list.
         if any(result.values()):
-            logger.debug(f"Found listing: {result['title']}")
+            logger.debug(f"Found listing {i}: {result['title']}")
             parsed.append(result)
         else:
             logger.warning(f"Couldn't parse listing number {i}")
             with open("docs/failed_listing.html", "a", encoding="utf-8") as file:
                 if listing.string:
+                    logger.debug(f"Listing text: {listing.string}")
                     file.write(listing.string)
                     file.write("\n------------------\n")
+                else:
+                    logger.debug(f"Listing {i} has no text")
 
-    logger.info(f'Parsed {len(parsed)} listings.')
+    logger.info(f'Parsed {len(parsed)} listings.\n')
     return parsed
 
 

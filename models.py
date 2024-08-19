@@ -2,12 +2,59 @@
 
 from enum import Enum
 
+LOGIN_URL = "https://www.facebook.com/login/device-based/regular/login/"
 
-MARKETPLACE_URL = (
-    "https://www.facebook.com/marketplace/{0}/search/?query={1}&maxPrice={2}"
-)
-INITIAL_URL = "https://www.facebook.com/login/device-based/regular/login/"
+# Params: City, Category, Query
+# Set City as "category" for generic (no city)
+# Set Category as "search" for any
+# Example Query: "query=iphone&sortBy=creation_time_descend"
+MARKETPLACE_URL = "https://www.facebook.com/marketplace/{0}/{1}?{2}"
 
+CATEGORIES_URL = "https://www.facebook.com/marketplace/categories"
+
+# For URL: replace(" ", "").lower()
+CATEGORIES = [
+    "Search",
+    "Vehicles",
+    "Apparel",
+    "Classifieds",
+    "Electronics"
+    "Entertainment",
+    "Family",
+    "Free",
+    "Garden",
+    "Hobbies",
+    "Home",
+    "Home-Improvements",
+    "Property Rentals",
+    "Property For Sale",
+    "Instruments",
+    "Office-Supplies",
+    "Pets",
+    "Sports",
+    "Toys"
+]
+
+SORT = {
+    "Price: Lowset first":"price_ascend",
+    "Price: Highest first": "price_descend",
+    "Date listed: Newest first": "creation_time_descend",
+    "Date listed: Oldest first": "creation_time_ascend",
+    "Distance: Nearest first": "distance_ascend",
+    "Distance: Farthest first": "distance_descend",
+    "Mileage: Lowest first": "vehicle_mileage_ascend",
+    "Mileage: Highest first": "vehicle_mileage_descend",
+    "Year: Newest": "vehicle_year_descend",
+    "Year: Oldest": "vehicle_year_ascend"
+    }
+
+# For URL: replace(" ", "_").lower()
+CONDITION = [
+    "New",
+    "Used Like New",
+    "Used Good",
+    "Used Fair"
+]
 
 class FBClassBullshit(Enum):
     """Where to find these elements in the HTML"""

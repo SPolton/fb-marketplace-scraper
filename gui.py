@@ -1,45 +1,71 @@
 """
 Description: This file contains the GUI code for Passivebot's Facebook Marketplace Scraper.
 Date Created: 2024-01-24
+Date Modified: 2024-08-18
 Author: Harminder Nijjar
-Version: 1.0.1.
-Usage: python gui.py
+Modified by: SPolton
+Version: 1.1.0
+Usage: steamlit run gui.py
 """
-
-"""Cool GUI I didn't write :D"""
 
 import os
 import streamlit as st
 import requests
 
 from dotenv import load_dotenv
+from urllib.parse import urlencode
 
 from cities import CITIES
+from models import CATEGORIES, SORT, CONDITION
 
 load_dotenv()
 HOST = os.getenv('HOST', "127.0.0.1")
 PORT = int(os.getenv('PORT', 8000))
 
-API_URL = f"http://{HOST}:{PORT}/crawl_facebook_marketplace" \
-            "?city={0}&query={1}&max_price={2}"
+API_BASE_URL = f"http://{HOST}:{PORT}/crawl_facebook_marketplace"
 
 # Create a title for the web app.
-st.title("Passivebot's Facebook Marketplace Scraper")
+st.title("Facebook Marketplace Scraper")
 
-# Take user input for the city, query, and max price.
-city = st.selectbox("City", CITIES.keys(), 0)
+# Take user input for the city, category, and various queries.
+city_id = st.selectbox("City", CITIES.keys(), 0)
+city = CITIES[city_id]
+
+category_id = st.selectbox("Category", CATEGORIES, 0)
+category = category_id.replace(" ","").lower()
+
 query = st.text_input("Query", "iPhone")
-max_price = st.text_input("Max Price", "1000")
-max_price = max_price.strip(",")
+
+sort_id = st.selectbox("Sort By", SORT.keys(), 2)
+sort = SORT[sort_id]
+
+max_price = st.number_input("Max Price", min_value=0, format="%d", value=1000)
+
+# Create columns for checkboxes and display
+# columns = st.columns(len(CONDITION))
+# checkbox_values = []
+# for i, condition in enumerate(CONDITION):
+#     with columns[i]:
+#         checkbox_values.append(st.checkbox(condition))
+
 # Create a button to submit the form.
 submit = st.button("Submit")
 
 # If the button is clicked.
 if submit:
-    inputs = [city, query, max_price]
-    url = API_URL.format(*inputs)
-    res = requests.get(url, timeout=9999)
-    print(f"Requesting URL: {url}")
+    params = {
+        "city": city,
+        "category": category,
+        "query": f"query={query}&sortBy={sort}&maxPrice={max_price}"
+    }
+
+    # Encode the parameters
+    encoded_params = urlencode(params)
+    url = f"{API_BASE_URL}?{encoded_params}"
+
+    print(f"\nRequesting URL: {url}\n")
+    st.info(f"Request URL: {url}")
+    res = requests.get(url, timeout=60)
 
     try:
         res.raise_for_status()
