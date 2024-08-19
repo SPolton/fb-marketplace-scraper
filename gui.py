@@ -4,7 +4,7 @@ Date Created: 2024-01-24
 Date Modified: 2024-08-19
 Author: Harminder Nijjar
 Modified by: SPolton
-Version: 1.2.0
+Version: 1.3.0
 Usage: steamlit run gui.py
 """
 
@@ -27,9 +27,9 @@ API_URL_CRAWL = API_URL_BASE + "/crawl_facebook_marketplace"
 
 
 def api_crawl_params():
-    """Returns the unencoded url params needed for api crawl, based on user query"""
+    """Returns the unencoded params needed for api crawl, based on user query"""
     terms = []
-    if query and query != "":
+    if query:
         terms.append(f"query={query}")
     if sort:
         terms.append(f"sortBy={sort}")
@@ -38,9 +38,15 @@ def api_crawl_params():
     if max_price:
         terms.append(f"maxPrice={max_price}")
 
-    # "itemCondition=new,used_good"
-    # for cond in condition_values:
-    #     pass
+    conditions = []
+    for i, is_selected in enumerate(condition_values):
+        if is_selected:
+            cond = CONDITION[i].replace(" ", "_").lower()
+            conditions.append(cond)
+
+    if len(conditions) > 0:
+        cond = ",".join(conditions)
+        terms.append(f"itemCondition={cond}")
 
     params = {
         "city": city,
@@ -53,9 +59,11 @@ def api_crawl_params():
 # Create a title for the web app.
 st.title("Facebook Marketplace Scraper")
 
-# Take user input for the city, category, and various queries.
+# init to None to avoid undefined NameError
+city = category = query = sort = min_price = max_price = None
 error_present = False
 
+# Take user input for the city, category, and various queries.
 col = st.columns(2)
 with col[0]:
     city_name = st.selectbox("City", CITIES.keys(), 0)
@@ -84,12 +92,12 @@ with col[0]:
             error_present = True
             st.error("Max Price less than Min price.")
 
-# with col[1]:
-#     # Contition checkboxes in drawer
-#     condition_values = []
-#     with st.expander("Condition"):
-#         for i, condition in enumerate(CONDITION):
-#             condition_values.append(st.checkbox(condition))
+with col[1]:
+    # Contition checkboxes in drawer
+    condition_values = []
+    with st.expander("Condition"):
+        for i, condition in enumerate(CONDITION):
+            condition_values.append(st.checkbox(condition))
 
 # Button to submit the form.
 submit = st.button("Submit", disabled=error_present)

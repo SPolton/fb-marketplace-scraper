@@ -4,7 +4,7 @@ Date Created: 2024-01-24
 Date Modified: 2024-08-19
 Author: Harminder Nijjar
 Modified by: SPolton
-Version: 1.2.0
+Version: 1.2.1
 Usage: python app.py
 """
 
@@ -75,21 +75,22 @@ def root() -> Response:
 def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResponse:
     """Get fb marketplace listing information"""
     logger.debug(f"Params: {city}, {category}, {query}")
-
-    if category=="TEST":
-        time.sleep(1)
-        return JSONResponse([{
-            "image": None,
-            "title": "Test",
-            "price": "100",
-            "post_url": "URL",
-            "location": city,
-        }])
     
     # Define the URL to scrape.
     inputs = (city, category, query)
     marketplace_url = MARKETPLACE_URL.format(*inputs)
     logger.info(f"Using marketplace URL: {marketplace_url}")
+
+    # Testing, remove later
+    if category=="test":
+        time.sleep(1)
+        return JSONResponse([{
+            "image": None,
+            "title": "Test",
+            "price": "$100",
+            "post_url": None,
+            "location": city,
+        }])
 
     # Get listings of particular item in a particular city for a particular price.
     # Initialize the session using Playwright.
