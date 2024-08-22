@@ -1,10 +1,10 @@
 """
-Description: This file contains the GUI code for Passivebot's Facebook Marketplace Scraper.
+Description: This file hosts the web GUI for the Facebook Marketplace Scraper.
 Date Created: 2024-01-24
-Date Modified: 2024-08-19
+Date Modified: 2024-08-21
 Author: Harminder Nijjar
 Modified by: SPolton
-Version: 1.3.0
+Version: 1.3.1
 Usage: steamlit run gui.py
 """
 
@@ -102,35 +102,43 @@ with col[1]:
 # Button to submit the form.
 submit = st.button("Submit", disabled=error_present)
 
+message = st.empty()
+
 # If the button is clicked.
 if submit:
+    message.info("Attempting to find listings...")
+
     # Encode the parameters
     encoded_params = urlencode(api_crawl_params())
     url = f"{API_URL_CRAWL}?{encoded_params}"
 
-    print(f"\nAPI URL: {url}\n")
-    res = requests.get(url, timeout=60)
-
     try:
+        print(f"\nAPI URL: {url}\n")
+        res = requests.get(url, timeout=60)
+
+        # Throw exception if response not OK
         res.raise_for_status()
-    except requests.exceptions.HTTPError as http_err:
-        st.error(f"HTTP error occurred: {http_err}")
+
+        results = res.json()
+        message.info(f"Number of results: {len(results)}")
+
+        # Iterate over the results list to display each item.
+        for item in results:
+            st.header(item.get("title"))
+            if img_url := item.get("image"):
+                st.image(img_url, width=200)
+            st.write(item.get("price"))
+            st.write(item.get("location"))
+            if url := item.get('post_url'):
+                st.write(f"https://www.facebook.com{url}")
+            st.write("----")
+
+    except requests.exceptions.HTTPError as e:
+        message.error(f"An error occured within the backend API.\n\n{e}")
+        detail = res.json().get("detail")
+        st.error(f"Details: {detail}")
+    except requests.exceptions.ConnectionError as e:
+        message.error(f"Could not establish a connection to the API. \
+                        The sever might be down.\n\n{e}")
     except requests.exceptions.RequestException as e:
-        st.error(f"An error occurred: {e}")
-
-    # Convert the response from json into a Python list.
-    results = res.json()
-
-    # Display the length of the results list.
-    st.write(f"Number of results: {len(results)}")
-
-    # Iterate over the results list to display each item.
-    for item in results:
-        st.header(item.get("title"))
-        if img_url := item.get("image"):
-            st.image(img_url, width=200)
-        st.write(item.get("price"))
-        st.write(item.get("location"))
-        if url := item.get('post_url'):
-            st.write(f"https://www.facebook.com{url}")
-        st.write("----")
+        message.error(f"There was a problem with the request.\n\n{e}")
