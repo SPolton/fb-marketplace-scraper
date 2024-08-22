@@ -1,10 +1,10 @@
 """
 Description: This file contains the code for Passivebot's Facebook Marketplace Scraper API.
 Date Created: 2024-01-24
-Date Modified: 2024-08-19
+Date Modified: 2024-08-21
 Author: Harminder Nijjar
 Modified by: SPolton
-Version: 1.2.1
+Version: 1.3.0
 Usage: python app.py
 """
 
@@ -18,11 +18,9 @@ from bs4 import BeautifulSoup, element          # Used to parse the HTML.
 from dotenv import load_dotenv                  # Used to load username and password securely
 from playwright.sync_api import sync_playwright # Used to crawl the Facebook Marketplace.
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-
-from cities import CITIES
 
 from models import FBClassBullshit, MARKETPLACE_URL
 
@@ -73,15 +71,18 @@ def root() -> Response:
 
 @app.get("/crawl_facebook_marketplace")
 def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResponse:
-    """Get fb marketplace listing information"""
+    """
+    Attempts to scrape Facebook Marketplace for listing information.
+    Returns: A JSON Response containing a list of dictionaries.
+    """
     logger.debug(f"Params: {city}, {category}, {query}")
     
     # Define the URL to scrape.
     inputs = (city, category, query)
     marketplace_url = MARKETPLACE_URL.format(*inputs)
-    logger.info(f"Using marketplace URL: {marketplace_url}")
+    logger.info(f"Marketplace URL: {marketplace_url}")
 
-    # Testing, remove later
+    # Testing gui, remove later
     if category=="test":
         time.sleep(1)
         return JSONResponse([{
@@ -92,73 +93,91 @@ def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResp
             "location": city,
         }])
 
-    # Get listings of particular item in a particular city for a particular price.
-    # Initialize the session using Playwright.
-    with sync_playwright() as p:
-        # Open a new browser page.
-        logger.debug("Opening browser")
-        browser = p.firefox.launch(headless=False)
-        page = browser.new_page()
+    # Get listings based on the results from the url query.
+    try:
+        # Initialize the session using Playwright.
+        with sync_playwright() as p:
+            # Open a new browser page.
+            logger.debug("Opening browser")
+            browser = p.firefox.launch(headless=False)
+            page = browser.new_page()
 
-        # Go to page and wait for it to load
-        logger.debug(f"Opening {marketplace_url}")
-        page.goto(marketplace_url)
-        page.wait_for_load_state()
+            # Go to page and wait for it to load
+            logger.debug(f"Opening {marketplace_url}")
+            page.goto(marketplace_url)
 
-        html = page.content()
-        soup = BeautifulSoup(html, "html.parser")
+            # Attempt login if prompted
+            login_attempts = 0
+            while login_attempts < 3 and page.locator('div#loginform').is_visible():
+                login_attempts += 1
+                logged_in = False
+                logged_in = attempt_login(page)
+                logger.debug(f"login status: {logged_in}")
+            
+            if not logged_in and login_attempts >= 3:
+                logger.error("Could not login after 3 attempts.")
+                raise HTTPException(401, "Failed to login to Facebook")
+            
+            logger.info("Finished login step.")
 
-        # Attempt login if prompted
-        login_attempts = 0
-        while soup.find("div", id="loginform") and login_attempts < 3:
-            login_attempts += 1
-            attempt_login(page)
-            page.wait_for_load_state()
-            time.sleep(0.5)
+            if not logged_in:
+                # close potential login popup
+                page.wait_for_load_state("networkidle")
+                close_button = page.query_selector('div[aria-label="Close"][role="button"]')
+                if close_button.is_visible():
+                    close_button.click()
+                    logger.debug("Closed Login Popup.")
+            
+            # TODO: Other popups are preventing scrolling.
+            # i.e. "Allow facebook.com to send notifications" popup
 
+            # Scroll down page to load more listings
+            for _ in range(10):
+                page.keyboard.press("End")
+                page.wait_for_load_state()
+
+            page.wait_for_load_state("networkidle")
             html = page.content()
             soup = BeautifulSoup(html, "html.parser")
 
-        # close optional login popup
-        close_button = page.query_selector('div[aria-label="Close"][role="button"]')
-        if close_button:
-            close_button.click()
-            page.wait_for_load_state()
-            time.sleep(0.5)
-            html = page.content()
-            soup = BeautifulSoup(html, "html.parser")
+            # Parse the listings
+            listings: list[element.Tag] = soup.find_all(
+                "div", class_=FBClassBullshit.LISTINGS.value
+            )
+            parsed_json = parse_listings(listings)
 
-        # for _ in range(10):
-        #     page.keyboard.press("End")
-        #     page.wait_for_load_state('networkidle')
-        # html = page.content()
-        # soup = BeautifulSoup(html, "html.parser")
-
-        listings: list[element.Tag] = soup.find_all(
-            "div", class_=FBClassBullshit.LISTINGS.value
-        )
-        parsed_json = parse_listings(listings)
-
-        logger.debug("Closing browser and returning JSON\n")
-        browser.close()
-        return JSONResponse(parsed_json)
+            logger.debug("Closing browser and returning JSON\n")
+            browser.close()
+            return JSONResponse(parsed_json)
+        
+    except Exception as e:
+        logger.critical("Fatal crash when parsing browser page\n", exc_info=True)
+        raise HTTPException(500, f"Unexpected crash during parsing. {e}")
 
 
 def attempt_login(page):
-    """Enters login info into the prompt"""
+    """
+    Attempts to enter login info into the form.
+    Assumes that the form exists, else, will eventually timeout.
+    Returns: True if the login actions happened sucessfully, False otherwise.
+    """
     logger.info("Attempting to login...")
-    if user := page.wait_for_selector('input[name="email"]'):
-        user.fill(FB_USER)
-    time.sleep(0.5)
-    if pw := page.wait_for_selector('input[name="pass"]'):
-        pw.fill(FB_PASSWORD)
-    time.sleep(1)
-    if login := page.wait_for_selector('button[name="login"]'):
-        login.click()
+    try:
+        # Playwright auto-waits before doing actions.
+        page.locator('input[name="email"]').fill(FB_USER)
+        page.locator('input[name="pass"]').fill(FB_PASSWORD)
+        page.locator('button[name="login"]').click()
+        return True
+    except TimeoutError as timeout:
+        logger.error(f"Timeout on login attempt. {timeout}")
+    return False
 
 
 def parse_listings(listings):
-    """Unfiltered listings"""
+    """
+    Parses a list of HTML listings and extracts relevant information.
+    Returns: A list of dictionaries, each containing the listing data.
+    """
     logger.info("Parsing listings...")
     parsed = []
     for i, listing in enumerate(listings):
