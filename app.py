@@ -1,10 +1,10 @@
 """
 Description: This file contains the code for Passivebot's Facebook Marketplace Scraper API.
 Date Created: 2024-01-24
-Date Modified: 2024-08-21
+Date Modified: 2024-08-25
 Author: Harminder Nijjar
 Modified by: SPolton
-Version: 1.3.0
+Version: 1.3.1
 Usage: python app.py
 """
 
@@ -17,6 +17,7 @@ import logging  # For terminal info and debugging
 from bs4 import BeautifulSoup, element          # Used to parse the HTML.
 from dotenv import load_dotenv                  # Used to load username and password securely
 from playwright.sync_api import sync_playwright # Used to crawl the Facebook Marketplace.
+from playwright._impl._errors import TimeoutError
 
 from fastapi import FastAPI, Response, HTTPException
 from fastapi.responses import JSONResponse
@@ -75,7 +76,7 @@ def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResp
     Attempts to scrape Facebook Marketplace for listing information.
     Returns: A JSON Response containing a list of dictionaries.
     """
-    logger.debug(f"Params: {city}, {category}, {query}")
+    # logger.debug(f"Params: {city}, {category}, {query}")
     
     # Define the URL to scrape.
     inputs = (city, category, query)
@@ -102,17 +103,18 @@ def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResp
             browser = p.firefox.launch(headless=False)
             page = browser.new_page()
 
-            # Go to page and wait for it to load
             logger.debug(f"Opening {marketplace_url}")
             page.goto(marketplace_url)
 
             # Attempt login if prompted
+            logged_in = None
             login_attempts = 0
-            while login_attempts < 3 and page.locator('div#loginform').is_visible():
+            while login_attempts < 3 and page.locator("div#loginform").is_visible():
                 login_attempts += 1
                 logged_in = False
                 logged_in = attempt_login(page)
                 logger.debug(f"login status: {logged_in}")
+                page.wait_for_load_state("networkidle")
             
             if not logged_in and login_attempts >= 3:
                 logger.error("Could not login after 3 attempts.")
@@ -134,6 +136,7 @@ def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResp
             # Scroll down page to load more listings
             for _ in range(10):
                 page.keyboard.press("End")
+                logger.debug("Scroll...")
                 page.wait_for_load_state()
 
             page.wait_for_load_state("networkidle")
@@ -157,19 +160,21 @@ def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResp
 
 def attempt_login(page):
     """
-    Attempts to enter login info into the form.
-    Assumes that the form exists, else, will eventually timeout.
+    Attempts to enter login info into the form. Assumes that the form exists,
+    else, will timeout in 2 seconds.
     Returns: True if the login actions happened sucessfully, False otherwise.
     """
     logger.info("Attempting to login...")
     try:
+        page.locator("div#loginform").wait_for(timeout=2000, state="visible")
         # Playwright auto-waits before doing actions.
         page.locator('input[name="email"]').fill(FB_USER)
         page.locator('input[name="pass"]').fill(FB_PASSWORD)
         page.locator('button[name="login"]').click()
         return True
+    
     except TimeoutError as timeout:
-        logger.error(f"Timeout on login attempt. {timeout}")
+        logger.warning(f"Timeout on login attempt. {timeout}")
     return False
 
 
@@ -205,7 +210,9 @@ def parse_listings(listings):
         # Get the item URL.
         if post_url := listing.find("a", class_=FBClassBullshit.URL.value):
             if isinstance(post_url, element.Tag):
-                result["post_url"] = post_url.get("href")
+                url_part = post_url.get("href")
+                url_clean = url_part.split("/?")[0]
+                result["post_url"] = f"https://www.facebook.com{url_clean}/"
 
         # Append the parsed data to the list.
         if any(result.values()):

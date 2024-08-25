@@ -1,10 +1,10 @@
 """
 Description: This file hosts the web GUI for the Facebook Marketplace Scraper.
 Date Created: 2024-01-24
-Date Modified: 2024-08-21
+Date Modified: 2024-08-25
 Author: Harminder Nijjar
 Modified by: SPolton
-Version: 1.3.2
+Version: 1.3.3
 Usage: steamlit run gui.py
 """
 
@@ -128,6 +128,7 @@ if submit:
 
         # Save results in session
         state.results = res.json()
+        message.info(f"Number of results: {len(state.results)}")
 
     except requests.exceptions.HTTPError as e:
         message.error(f"An error occured within the backend API.\n\n{e}")
@@ -150,12 +151,15 @@ if len(state.results) > 0:
 for i, item in enumerate(state.results):
     try:
         st.header(item.get("title"))
-        if img_url := item.get("image"):
-            st.image(img_url, width=200)
-        st.write(item.get("price"))
-        st.write(item.get("location"))
-        if url := item.get('post_url'):
-            st.write(f"https://www.facebook.com{url}")
+        col = st.columns(2)
+        with col[0]:
+            if img_url := item.get("image"):
+                st.image(img_url, width=200)
+        with col[1]:
+            st.write(item.get("price"))
+            st.write(item.get("location"))
+            if url := item.get('post_url'):
+                st.write(url)
 
     except Exception as e:
         st.error(f"Error displaying listing {i}: {e}")
