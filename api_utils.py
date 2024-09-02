@@ -4,22 +4,23 @@ Date Created: 2024-08-27
 Date Modified: 2024-08-27
 Author: SPolton
 Modified by: SPolton
+Version: 1.4.0
 """
 
-
-import os
 import requests
 
+from os import getenv
 from dotenv import load_dotenv
 from urllib.parse import urlencode
 from models import CONDITION
 
 load_dotenv()
-HOST = os.getenv('HOST', "127.0.0.1")
-PORT = int(os.getenv('PORT', 8000))
+HOST = getenv('HOST', "127.0.0.1")
+PORT = int(getenv('PORT', 8000))
 
 API_URL_BASE = f"http://{HOST}:{PORT}"
-API_URL_CRAWL = API_URL_BASE + "/crawl_facebook_marketplace"
+API_URL_CRAWL = API_URL_BASE + "/crawl_marketplace"
+API_URL_CRAWL_NEW = API_URL_CRAWL + "/new_results"
 
 
 def format_crawl_params(city, category, query=None, sort=None, min_price=None,
@@ -56,13 +57,13 @@ def format_crawl_params(city, category, query=None, sort=None, min_price=None,
     return params
 
 
-def get_crawl_results(params):
+def get_crawl_results(params, api_url=API_URL_CRAWL):
     """
     Attempts to conncet to the API and return the results.
     Throws: RuntimeError
     """
     encoded_params = urlencode(params)
-    url = f"{API_URL_CRAWL}?{encoded_params}"
+    url = f"{api_url}?{encoded_params}"
 
     try:
         print(f"\nRequest URL: {url}\n")

@@ -2,35 +2,33 @@
 Description: This file contains the code for Passivebot's Facebook Marketplace Scraper API.
 Date Created: 2024-01-24
 Date Modified: 2024-08-25
-Author: Harminder Nijjar
+Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.3.1
+Version: 1.4.0
 Usage: python app.py
 """
 
+import logging, time, uvicorn
 
-import os       # Used to get the environment variables.
-import time     # Used to add a delay to the script.
-import uvicorn  # Used to run the API.
-import logging  # For terminal info and debugging
-
-from bs4 import BeautifulSoup, element          # Used to parse the HTML.
-from dotenv import load_dotenv                  # Used to load username and password securely
-from playwright.sync_api import sync_playwright # Used to crawl the Facebook Marketplace.
-from playwright._impl._errors import TimeoutError
+from os import getenv
+from dotenv import load_dotenv
+from bs4 import BeautifulSoup, element
 
 from fastapi import FastAPI, Response, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from playwright.sync_api import sync_playwright
+from playwright._impl._errors import TimeoutError
 
+from database import *
 from models import FBClassBullshit, MARKETPLACE_URL
 
 # Retrieve sensitive data from environment variables
 load_dotenv()
-FB_USER = os.getenv('FB_USER')
-FB_PASSWORD = os.getenv('FB_PASSWORD')
-HOST = os.getenv('HOST', "127.0.0.1")
-PORT = int(os.getenv("PORT", 8000))
+FB_USER = getenv('FB_USER')
+FB_PASSWORD = getenv('FB_PASSWORD')
+HOST = getenv('HOST', "127.0.0.1")
+PORT = int(getenv("PORT", 8000))
 
 # Configure logging
 logging.basicConfig(
@@ -70,11 +68,50 @@ def root() -> Response:
     )
 
 
-@app.get("/crawl_facebook_marketplace")
-def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResponse:
+@app.get("/crawl_marketplace")
+def crawl_marketplace(city: str, category: str, query: str) -> JSONResponse:
     """
     Attempts to scrape Facebook Marketplace for listing information.
     Returns: A JSON Response containing a list of dictionaries.
+    Throws: HTTPException 500 on RuntimeError
+    """
+    try:
+        results = crawl_marketplace_logic(city, category, query)
+        return JSONResponse(results)
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/crawl_marketplace/new_results")
+def crawl_marketplace_new_results(city: str, category: str, query: str) -> JSONResponse:
+    """
+    Attempts to scrape Facebook Marketplace for new listings.
+    Results are compared to the previous results
+    Returns: A JSON Response containing a list of new listings.
+    Throws: HTTPException 500 on RuntimeError
+    """
+    try:
+        logger.debug("Entering crawl_marketplace_new_listings")
+        results = crawl_marketplace_logic(city, category, query)
+
+        if len(results) > 0:
+            logger.info("Accessing database.")
+            search_id = get_or_insert_search_criteria(city, category, query)
+            new_results = get_new_results(search_id, results)
+            if len(new_results) > 0:
+                insert_results(search_id, new_results)
+                remove_stale_results(search_id, results)
+            logger.info(f"Found {len(new_results)} new listings.")
+            return JSONResponse(new_results)
+        return JSONResponse([])
+    
+    except RuntimeError as e:
+        return HTTPException(500, str(e))
+
+
+def crawl_marketplace_logic(city, category, query):
+    """
+    Returns a list of listings
     """
     # logger.debug(f"Params: {city}, {category}, {query}")
     
@@ -86,13 +123,13 @@ def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResp
     # Testing gui, remove later
     if category=="test":
         time.sleep(1)
-        return JSONResponse([{
+        return [{
             "image": None,
             "title": "Test",
             "price": "$100",
-            "post_url": None,
+            "url": None,
             "location": city,
-        }])
+        }]
 
     # Get listings based on the results from the url query.
     try:
@@ -118,7 +155,7 @@ def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResp
             
             if not logged_in and login_attempts >= 3:
                 logger.error("Could not login after 3 attempts.")
-                raise HTTPException(401, "Failed to login to Facebook")
+                raise RuntimeError("Failed to login to Facebook")
             
             logger.info("Finished login step.")
 
@@ -147,15 +184,15 @@ def crawl_facebook_marketplace(city: str, category: str, query: str) -> JSONResp
             listings: list[element.Tag] = soup.find_all(
                 "div", class_=FBClassBullshit.LISTINGS.value
             )
-            parsed_json = parse_listings(listings)
+            parsed = parse_listings(listings)
 
             logger.debug("Closing browser and returning JSON\n")
             browser.close()
-            return JSONResponse(parsed_json)
+            return parsed
         
     except Exception as e:
         logger.critical("Fatal crash when parsing browser page\n", exc_info=True)
-        raise HTTPException(500, f"Unexpected crash during parsing. {e}")
+        raise RuntimeError(f"Unexpected crash during parsing. {e}")
 
 
 def attempt_login(page):
@@ -187,11 +224,11 @@ def parse_listings(listings):
     parsed = []
     for i, listing in enumerate(listings):
         result: dict[str, str | list[str] | None] = {
-            "image": None,
+            "url": None,
             "title": None,
             "price": None,
-            "post_url": None,
             "location": None,
+            "image": None,
         }
         # Get the text Elements
         for item in (
@@ -202,31 +239,33 @@ def parse_listings(listings):
             if html_text := listing.find("span", item.value):
                 result[item.name.lower()] = html_text.text
 
-        # Get the item image.
-        if image := listing.find("img", class_=FBClassBullshit.IMAGE.value):
-            if isinstance(image, element.Tag):
-                result["image"] = image.get("src")
-
         # Get the item URL.
         if post_url := listing.find("a", class_=FBClassBullshit.URL.value):
             if isinstance(post_url, element.Tag):
                 url_part = post_url.get("href")
                 url_clean = url_part.split("/?")[0]
-                result["post_url"] = f"https://www.facebook.com{url_clean}/"
+                result["url"] = f"https://www.facebook.com{url_clean}/"
+        else:
+            logger.debug(f"Listing {i} URL is None")
+
+        # Get the item image.
+        if image := listing.find("img", class_=FBClassBullshit.IMAGE.value):
+            if isinstance(image, element.Tag):
+                result["image"] = image.get("src")
 
         # Append the parsed data to the list.
-        if any(result.values()):
+        if any(result.values()) and result["url"] is not None:
             logger.debug(f"Found listing {i}: {result['title']}")
             parsed.append(result)
         else:
             logger.warning(f"Couldn't parse listing number {i}")
-            with open("docs/failed_listing.html", "a", encoding="utf-8") as file:
-                if listing.string:
-                    logger.debug(f"Listing text: {listing.string}")
+            if listing.string:
+                logger.debug(f"Listing {i} text: {listing.string}")
+                with open("static/failed_listing.html", "a", encoding="utf-8") as file:
                     file.write(listing.string)
                     file.write("\n------------------\n")
-                else:
-                    logger.debug(f"Listing {i} has no text")
+            else:
+                logger.debug(f"Listing {i} has no text")
 
     logger.info(f'Parsed {len(parsed)} listings.')
     return parsed
@@ -285,6 +324,13 @@ def return_ip_information() -> JSONResponse:
 
 
 if __name__ == "__main__":
+    # Init database
+    try:
+        init_db()
+    except Exception as e:
+        logger.warning(f"Database Error\n{e}")
+    print()
+    
     # Run the app.
     uvicorn.run(
         # Specify the app as the FastAPI app.

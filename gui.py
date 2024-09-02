@@ -4,7 +4,7 @@ Date Created: 2024-01-24
 Date Modified: 2024-08-25
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.3.4
+Version: 1.4.0
 Usage: steamlit run gui.py
 """
 
@@ -28,12 +28,11 @@ def display_results(results):
             col = st.columns(2)
             with col[0]:
                 if img_url := item.get("image"):
-                    st.image(img_url, width=200)
+                    st.image(img_url)
             with col[1]:
                 st.write(item.get("price"))
                 st.write(item.get("location"))
-                if url := item.get('post_url'):
-                    st.write(url)
+                st.write(item.get("url"))
 
         except Exception as e:
             st.error(f"Error displaying listing {i}: {e}")
@@ -91,11 +90,15 @@ with col[1]:
             condition_values.append(st.checkbox(condition))
 
 # with st.expander("Schedule"):
-#     col = st.columns(2)
+#     col = st.columns(3)
 #     with col[0]:
-#         frequency = st.number_input("Frequency in minutes", min_value=1, format="%d", value=1)
+#         schedule = st.checkbox("Schedule")
 #     with col[1]:
-#         ntfy = st.text_input("ntfy topic")
+#         frequency = st.number_input("Frequency in minutes", min_value=1, format="%d", value=1, disabled=not schedule)
+#     with col[2]:
+#         ntfy = st.text_input("ntfy topic", f"fb_scraper_{query}", disabled=not schedule)
+
+new_only = st.checkbox("New Listings Only")
 
 submit = st.button("Submit", disabled=error_present)
 
@@ -111,8 +114,12 @@ if submit:
                                  min_price, max_price, condition_values)
     
     try:
-        state.results = get_crawl_results(params)
+        if new_only:
+            state.results = get_crawl_results(params, API_URL_CRAWL_NEW)
+        else:
+            state.results = get_crawl_results(params, API_URL_CRAWL)
         message.info(f"Number of results: {len(state.results)}")
+
     except RuntimeError as e:
         message.error(str(e))
 
