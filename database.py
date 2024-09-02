@@ -4,21 +4,23 @@ Date Created: 2024-09-01
 Date Modified: 2024-09-01
 Author: SPolton
 Modified By: SPolton
-Version: dev
+Version: 1.4.1
 Credit: The initial implementation of database.py was assisted by ChatGPT 4o Mini
 """
 
 from os import getenv
 from dotenv import load_dotenv
 
-from sqlalchemy import create_engine, inspect, Column, Integer, String, Text, DateTime, ForeignKey
+import sqlite3
+from sqlalchemy import create_engine, inspect, Boolean, Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.sql import func
 
 load_dotenv()
-DATABASE_URL = getenv("DATABASE", "sqlite:///search_results.db")
-engine = create_engine(DATABASE_URL, echo=True)
+DATABASE = getenv("DATABASE", "search_results.db")
+DATABASE_URL = f"sqlite:///{DATABASE}"
+engine = create_engine(DATABASE_URL, echo=False)
 Session = sessionmaker(bind=engine)
 session = Session()
 
@@ -31,9 +33,12 @@ class SearchCriteria(Base):
     city = Column(String)
     category = Column(String)
     query = Column(String)
-    search_timestamp = Column(DateTime, server_default=func.now())
+    timestamp = Column(DateTime, server_default=func.now())
     
     results = relationship("Listing", back_populates="search_criteria")
+
+    def __repr__(self):
+        return f"<SearchCriteria(id={self.id}, city={self.city}, category={self.category}, query={self.query})>"
 
 class Listing(Base):
     __tablename__ = "results"
@@ -45,9 +50,13 @@ class Listing(Base):
     price = Column(String)
     location = Column(String)
     image = Column(Text)
-    result_timestamp = Column(DateTime, server_default=func.now())
+    # is_new = Column(Boolean, default=True)
+    timestamp = Column(DateTime, server_default=func.now())
     
     search_criteria = relationship("SearchCriteria", back_populates="results")
+
+    def __repr__(self):
+        return (f"<Listing(id={self.id}, search_id={self.search_id}, price='{self.price}',\ttitle='{self.title}', location='{self.location}')>")
 
 
 def init_db():
@@ -125,3 +134,25 @@ def get_new_results(search_id, results):
     ]
     
     return new_results
+
+
+def print_database():
+    print("\nsearch_criteria table:")
+    search_criteria_rows = session.query(SearchCriteria).all()
+    if search_criteria_rows:
+        for entry in search_criteria_rows:
+            print(entry)
+    else:
+        print("No entries found in 'search_criteria' table.")
+    
+    print("\nresults table:")
+    results = session.query(Listing).all()
+    if results:
+        for listing in results:
+            print(listing)
+    else:
+        print("No entries found in 'results' table.")
+
+if __name__ == "__main__":
+    init_db()
+    print_database()

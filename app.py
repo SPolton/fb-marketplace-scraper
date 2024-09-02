@@ -4,7 +4,7 @@ Date Created: 2024-01-24
 Date Modified: 2024-08-25
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.4.0
+Version: 1.4.1
 Usage: python app.py
 """
 
@@ -218,6 +218,7 @@ def attempt_login(page):
 def parse_listings(listings):
     """
     Parses a list of HTML listings and extracts relevant information.
+    URL is required.
     Returns: A list of dictionaries, each containing the listing data.
     """
     logger.info("Parsing listings...")
@@ -229,16 +230,8 @@ def parse_listings(listings):
             "price": None,
             "location": None,
             "image": None,
+            "is_new": False
         }
-        # Get the text Elements
-        for item in (
-            FBClassBullshit.TITLE,
-            FBClassBullshit.LOCATION,
-            FBClassBullshit.PRICE,
-        ):
-            if html_text := listing.find("span", item.value):
-                result[item.name.lower()] = html_text.text
-
         # Get the item URL.
         if post_url := listing.find("a", class_=FBClassBullshit.URL.value):
             if isinstance(post_url, element.Tag):
@@ -246,26 +239,36 @@ def parse_listings(listings):
                 url_clean = url_part.split("/?")[0]
                 result["url"] = f"https://www.facebook.com{url_clean}/"
         else:
-            logger.debug(f"Listing {i} URL is None")
+            logger.warning(f"Listing {i} URL is None")
 
-        # Get the item image.
-        if image := listing.find("img", class_=FBClassBullshit.IMAGE.value):
-            if isinstance(image, element.Tag):
-                result["image"] = image.get("src")
+        if result["url"] is not None:
+            # Get the text Elements
+            for item in (
+                FBClassBullshit.TITLE,
+                FBClassBullshit.LOCATION,
+                FBClassBullshit.PRICE,
+            ):
+                if html_text := listing.find("span", item.value):
+                    result[item.name.lower()] = html_text.text
 
-        # Append the parsed data to the list.
-        if any(result.values()) and result["url"] is not None:
-            logger.debug(f"Found listing {i}: {result['title']}")
-            parsed.append(result)
-        else:
-            logger.warning(f"Couldn't parse listing number {i}")
-            if listing.string:
-                logger.debug(f"Listing {i} text: {listing.string}")
-                with open("static/failed_listing.html", "a", encoding="utf-8") as file:
-                    file.write(listing.string)
-                    file.write("\n------------------\n")
+            # Get the item image.
+            if image := listing.find("img", class_=FBClassBullshit.IMAGE.value):
+                if isinstance(image, element.Tag):
+                    result["image"] = image.get("src")
+
+            # Append the parsed data to the list.
+            if any(result.values()):
+                logger.debug(f"Found listing {i}: {result['title']}")
+                parsed.append(result)
             else:
-                logger.debug(f"Listing {i} has no text")
+                logger.warning(f"Couldn't parse listing number {i}")
+                if listing.string:
+                    logger.debug(f"Listing {i} text: {listing.string}")
+                    with open("static/failed_listing.html", "a", encoding="utf-8") as file:
+                        file.write(listing.string)
+                        file.write("\n------------------\n")
+                else:
+                    logger.debug(f"Listing {i} has no text")
 
     logger.info(f'Parsed {len(parsed)} listings.')
     return parsed
