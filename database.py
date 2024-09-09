@@ -1,28 +1,31 @@
 """
 Description: Save results per search criteria using SQLalchemy and SQLite
 Date Created: 2024-09-01
-Date Modified: 2024-09-01
+Date Modified: 2024-09-09
 Author: SPolton
 Modified By: SPolton
-Version: 1.4.1
+Version: 1.4.3
 Credit: The initial implementation of database.py was assisted by ChatGPT 4o Mini
 """
 
 from os import getenv
 from dotenv import load_dotenv
+from logging import getLogger
 
-import sqlite3
-from sqlalchemy import create_engine, inspect, Boolean, Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import create_engine, inspect, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.sql import func
 
 load_dotenv()
-DATABASE = getenv("DATABASE", "search_results.db")
+DATABASE = getenv("DATABASE", "static/search_results.db")
 DATABASE_URL = f"sqlite:///{DATABASE}"
 engine = create_engine(DATABASE_URL, echo=False)
 Session = sessionmaker(bind=engine)
 session = Session()
+
+logger = getLogger(__name__)
 
 Base = declarative_base()
 
@@ -45,13 +48,17 @@ class Listing(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     search_id = Column(Integer, ForeignKey("search_criteria.id"))
-    url = Column(Text, unique=True)
+    url = Column(Text)
     title = Column(String)
     price = Column(String)
     location = Column(String)
     image = Column(Text)
     # is_new = Column(Boolean, default=True)
     timestamp = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('search_id', 'url', name='uix_search_id_url'),
+    )
     
     search_criteria = relationship("SearchCriteria", back_populates="results")
 
@@ -91,25 +98,21 @@ def get_or_insert_search_criteria(city, category, query):
 
 def insert_results(search_id, results):
     """Insert new results into the database."""
-    existing_urls = {url for url, in session.query(Listing.url).filter_by(search_id=search_id).all()}
-    new_listings = []
     for listing in results:
-        url = listing.get("url")
-        if url not in existing_urls:
-            new_result = Listing(
-                search_id=search_id,
-                url=url,
-                title=listing.get("title"),
-                price=listing.get("price"),
-                location=listing.get("location"),
-                image=listing.get("image")
-            )
-            new_listings.append(new_result)
-            existing_urls.add(url)
-    
-    if new_listings:
-        session.add_all(new_listings)
-        session.commit()
+        new_result = Listing(
+            search_id=search_id,
+            url=listing.get("url"),
+            title=listing.get("title"),
+            price=listing.get("price"),
+            location=listing.get("location"),
+            image=listing.get("image")
+        )
+        try:
+            session.add(new_result)
+            session.commit()
+        except IntegrityError:
+            session.rollback()  # Rollback the transaction on error
+            logger.warning(f"Duplicate entry detected for URL: {listing.get('url')}")
 
 def remove_stale_results(search_id, results):
     """Remove listings that are no longer present in the latest results."""
@@ -126,17 +129,18 @@ def get_results(search_id):
 
 def get_new_results(search_id, results):
     """Identify and return new results not present in the database for a given search_id."""
-    existing_results = get_results(search_id)
+    existing_urls = {result.url for result in get_results(search_id)}
     
     new_results = [
         listing for listing in results
-        if listing not in existing_results
+        if listing.get("url") not in existing_urls
     ]
     
     return new_results
 
 
 def print_database():
+    """Print the 'search_criteria' and 'results' tables to the terminal."""
     print("\nsearch_criteria table:")
     search_criteria_rows = session.query(SearchCriteria).all()
     if search_criteria_rows:
