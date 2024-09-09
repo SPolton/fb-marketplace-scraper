@@ -4,7 +4,7 @@ Date Created: 2024-01-24
 Date Modified: 2024-09-09
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.5.0
+Version: 1.5.1
 Usage: steamlit run gui.py
 """
 
@@ -12,7 +12,7 @@ import streamlit as st
 import time
 
 from api_utils import *
-# from notify import send_notification
+from notify import send_ntfy
 
 from cities import CITIES
 from models import CATEGORIES, SORT, CONDITION
@@ -24,6 +24,7 @@ if "results" not in state:
     state.results = []
     state.params = None
     state.scheduled = False
+    state.frequency = 60
     state.duration = 0
     state.cancel_pressed = False
 
@@ -78,7 +79,6 @@ def find_results(params):
         except RuntimeError as e:
             message.error(str(e))
 
-
 def display_results(results):
     """Show the results saved in state."""
     if len(results) > 0:
@@ -95,8 +95,8 @@ def display_results(results):
             with col[1]:
                 if item.get("is_new"):
                     st.header("New!")
-                    # mes = f"New listing: {item.get("price")}, {item.get("location")}\n'{item.get("title")}'\n{item.get("url")}"
-                    # send_notification("new_fb_listing", mes)
+                    mes = f"New listing: {item.get("price")}, {item.get("location")}\n'{item.get("title")}'\n{item.get("url")}"
+                    send_ntfy("new_fb_listing", mes)
                 st.write(item.get("price"))
                 st.write(item.get("location"))
                 st.write(item.get("url"))
@@ -158,7 +158,7 @@ with col[1]:
     set_schedule = st.checkbox("Schedule")
 if set_schedule:
     with col[2]:
-        frequency = st.number_input("Schedule Frequency (s)", min_value=15, format="%d", value=60, disabled=not set_schedule)
+        state.frequency = st.number_input("Schedule Frequency (s)", min_value=5, format="%d", value=60, disabled=not set_schedule)
 
 col = st.columns(4)
 with col[0]:
@@ -178,9 +178,9 @@ if submit_pressed:
     # Get params and encode the url for api
     state.params = format_crawl_params(city, category, query, sort,
                                 min_price, max_price, condition_values)
-    # find_results(state.params)
+    find_results(state.params)
     if set_schedule and not state.scheduled:
-        start_schedule(frequency)
+        start_schedule(state.frequency)
     elif not set_schedule:
         stop_schedule()
 elif state.cancel_pressed:
@@ -192,6 +192,6 @@ display_results(state.results)
 while state.scheduled:
     do_task = countdown_timer()
     if do_task:
-        # find_results(state.params)
+        #find_results(state.params)
         if state.scheduled:
-            state.duration = frequency
+            state.duration = state.frequency
