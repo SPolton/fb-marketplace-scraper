@@ -1,23 +1,86 @@
 """
 Description: This file hosts the web GUI for the Facebook Marketplace Scraper.
 Date Created: 2024-01-24
-Date Modified: 2024-08-25
+Date Modified: 2024-09-09
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.4.0
+Version: 1.5.0
 Usage: steamlit run gui.py
 """
 
 import streamlit as st
+import time
 
 from api_utils import *
+# from notify import send_notification
 
 from cities import CITIES
 from models import CATEGORIES, SORT, CONDITION
 
 
+# Keep state until a button is pressed to change the state.
+state = st.session_state
+if "results" not in state:
+    state.results = []
+    state.params = None
+    state.scheduled = False
+    state.duration = 0
+    state.cancel_pressed = False
+
+
+def start_schedule(frequency):
+    """Set state 'scheduled' to True and 'duration' to frequency input."""
+    state.scheduled = True
+    state.duration = frequency
+    state.cancel_pressed = cancel.button("Cancel Schedule")
+
+def stop_schedule():
+    """Set state 'scheduled' to False and 'duration' to 0."""
+    state.scheduled = False
+    state.duration = 0
+    cancel.empty()
+
+def countdown_timer():
+    """
+    Enters a loop that decrements state 'duration' to 0 and updates the countdown message.
+    Returns True when state 'duration' reaches 0 and 'scheduled' is True, returns False otherwise.
+    Function copied and modified:
+    https://github.com/wftanya/facebook-marketplace-scraper/commits/main/gui.py
+    """
+    countdown_message.empty()
+    while state.duration > 0:
+        mins, secs = divmod(state.duration, 60)
+        timeformat = '{:02d}:{:02d}'.format(mins, secs)
+        countdown_message.text(f"Time until next auto scrape: {timeformat}")
+        time.sleep(1)
+        state.duration -= 1
+    if state.scheduled:
+        countdown_message.text("Scraping...")
+        return True
+    else:
+        countdown_message.empty()
+        return False
+
+
+def find_results(params):
+    """Call API for listings and save results to state."""
+    if params:
+        state.results = []
+        message.info("Attempting to find listings...")
+        
+        try:
+            if new_only:
+                state.results = get_crawl_results(params, API_URL_CRAWL_NEW)
+            else:
+                state.results = get_crawl_results(params, API_URL_CRAWL)
+            message.info(f"Number of results: {len(state.results)}")
+
+        except RuntimeError as e:
+            message.error(str(e))
+
+
 def display_results(results):
-    # Show the number of listings
+    """Show the results saved in state."""
     if len(results) > 0:
         message.info(f"Number of results: {len(results)}")
 
@@ -30,6 +93,10 @@ def display_results(results):
                 if img_url := item.get("image"):
                     st.image(img_url)
             with col[1]:
+                if item.get("is_new"):
+                    st.header("New!")
+                    # mes = f"New listing: {item.get("price")}, {item.get("location")}\n'{item.get("title")}'\n{item.get("url")}"
+                    # send_notification("new_fb_listing", mes)
                 st.write(item.get("price"))
                 st.write(item.get("location"))
                 st.write(item.get("url"))
@@ -39,11 +106,6 @@ def display_results(results):
         finally:
             st.write("----")
 
-
-# Keep results in session until "submit" is pressed again.
-state = st.session_state
-if "results" not in state:
-    state.results = []
 
 # Create a title for the web app.
 st.title("Facebook Marketplace Scraper")
@@ -89,39 +151,47 @@ with col[1]:
         for i, condition in enumerate(CONDITION):
             condition_values.append(st.checkbox(condition))
 
-# with st.expander("Schedule"):
-#     col = st.columns(3)
-#     with col[0]:
-#         schedule = st.checkbox("Schedule")
-#     with col[1]:
-#         frequency = st.number_input("Frequency in minutes", min_value=1, format="%d", value=1, disabled=not schedule)
-#     with col[2]:
-#         ntfy = st.text_input("ntfy topic", f"fb_scraper_{query}", disabled=not schedule)
+col = st.columns(3)
+with col[0]:
+    new_only = st.checkbox("New Listings Only")
+with col[1]:
+    set_schedule = st.checkbox("Schedule")
+if set_schedule:
+    with col[2]:
+        frequency = st.number_input("Schedule Frequency (s)", min_value=15, format="%d", value=60, disabled=not set_schedule)
 
-new_only = st.checkbox("New Listings Only")
+col = st.columns(4)
+with col[0]:
+    submit_pressed = st.button("Submit", disabled=error_present)
+with col[1]:
+    cancel = st.empty()
+    if state.scheduled:
+        state.cancel_pressed = cancel.button("Cancel Schedule")
+    else:
+        state.cancel_pressed = False
 
-submit = st.button("Submit", disabled=error_present)
-
+countdown_message = st.empty()
 message = st.empty()
 
-# If the button is clicked.
-if submit:
-    state.results = []
-    message.info("Attempting to find listings...")
-
+# If a button is clicked.
+if submit_pressed:
     # Get params and encode the url for api
-    params = format_crawl_params(city, category, query, sort,
-                                 min_price, max_price, condition_values)
-    
-    try:
-        if new_only:
-            state.results = get_crawl_results(params, API_URL_CRAWL_NEW)
-        else:
-            state.results = get_crawl_results(params, API_URL_CRAWL)
-        message.info(f"Number of results: {len(state.results)}")
-
-    except RuntimeError as e:
-        message.error(str(e))
-
+    state.params = format_crawl_params(city, category, query, sort,
+                                min_price, max_price, condition_values)
+    # find_results(state.params)
+    if set_schedule and not state.scheduled:
+        start_schedule(frequency)
+    elif not set_schedule:
+        stop_schedule()
+elif state.cancel_pressed:
+    stop_schedule()
 
 display_results(state.results)
+
+# Scheduled task
+while state.scheduled:
+    do_task = countdown_timer()
+    if do_task:
+        # find_results(state.params)
+        if state.scheduled:
+            state.duration = frequency
