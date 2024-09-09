@@ -4,11 +4,11 @@ Date Created: 2024-01-24
 Date Modified: 2024-08-25
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.4.1
+Version: 1.4.2
 Usage: python app.py
 """
 
-import logging, time, uvicorn
+import json, logging, os, time, uvicorn
 
 from os import getenv
 from dotenv import load_dotenv
@@ -73,12 +73,17 @@ def crawl_marketplace(city: str, category: str, query: str) -> JSONResponse:
     """
     Attempts to scrape Facebook Marketplace for listing information.
     Returns: A JSON Response containing a list of dictionaries.
-    Throws: HTTPException 500 on RuntimeError
+    Throws: HTTPException 500 on RuntimeError.
     """
     try:
         results = crawl_marketplace_logic(city, category, query)
         return JSONResponse(results)
+    except AssertionError as e:
+        raise HTTPException(401, str(e))
     except RuntimeError as e:
+        raise HTTPException(500, str(e))
+    except Exception as e:
+        logger.critical(exc_info=True)
         raise HTTPException(500, str(e))
 
 
@@ -95,8 +100,8 @@ def crawl_marketplace_new_results(city: str, category: str, query: str) -> JSONR
         results = crawl_marketplace_logic(city, category, query)
 
         if len(results) > 0:
-            logger.info("Accessing database.")
             search_id = get_or_insert_search_criteria(city, category, query)
+            logger.info(f"Accessing database with search_id {search_id}")
             new_results = get_new_results(search_id, results)
             if len(new_results) > 0:
                 insert_results(search_id, new_results)
@@ -105,8 +110,13 @@ def crawl_marketplace_new_results(city: str, category: str, query: str) -> JSONR
             return JSONResponse(new_results)
         return JSONResponse([])
     
+    except AssertionError as e:
+        raise HTTPException(401, str(e))
     except RuntimeError as e:
-        return HTTPException(500, str(e))
+        raise HTTPException(500, str(e))
+    except Exception as e:
+        logger.critical(exc_info=True)
+        raise HTTPException(500, str(e))
 
 
 def crawl_marketplace_logic(city, category, query):
@@ -138,7 +148,9 @@ def crawl_marketplace_logic(city, category, query):
             # Open a new browser page.
             logger.debug("Opening browser")
             browser = p.firefox.launch(headless=False)
-            page = browser.new_page()
+            context = browser.new_context()
+            page = context.new_page()
+            load_cookies(context)
 
             logger.debug(f"Opening {marketplace_url}")
             page.goto(marketplace_url)
@@ -155,7 +167,7 @@ def crawl_marketplace_logic(city, category, query):
             
             if not logged_in and login_attempts >= 3:
                 logger.error("Could not login after 3 attempts.")
-                raise RuntimeError("Failed to login to Facebook")
+                raise AssertionError("Failed to login to Facebook")
             
             logger.info("Finished login step.")
 
@@ -166,6 +178,8 @@ def crawl_marketplace_logic(city, category, query):
                 if close_button.is_visible():
                     close_button.click()
                     logger.debug("Closed Login Popup.")
+            else:
+                save_cookies(context)
             
             # TODO: Other popups are preventing scrolling.
             # i.e. "Allow facebook.com to send notifications" popup
@@ -272,6 +286,22 @@ def parse_listings(listings):
 
     logger.info(f'Parsed {len(parsed)} listings.')
     return parsed
+
+
+def save_cookies(context, file='static/cookies.json'):
+    cookies = context.cookies()
+    with open(file, 'w') as f:
+        json.dump(cookies, f)
+        logger.info("Saved cookies to file.")
+
+def load_cookies(context, file='static/cookies.json'):
+    if os.path.exists(file):
+        with open(file, 'r') as f:
+            cookies = json.load(f)
+            context.add_cookies(cookies)
+            logger.info("Loaded saved cookies from file to context.")
+    else:
+        logger.info("Cookies file not found. Proceeding without loading cookies.")
 
 
 @app.get("/return_ip_information")
