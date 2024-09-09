@@ -1,10 +1,10 @@
 """
 Description: This file contains the code for Passivebot's Facebook Marketplace Scraper API.
 Date Created: 2024-01-24
-Date Modified: 2024-08-25
+Date Modified: 2024-09-09
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.4.2
+Version: 1.5.0
 Usage: python app.py
 """
 
@@ -83,7 +83,7 @@ def crawl_marketplace(city: str, category: str, query: str) -> JSONResponse:
     except RuntimeError as e:
         raise HTTPException(500, str(e))
     except Exception as e:
-        logger.critical(exc_info=True)
+        logger.critical("", exc_info=True)
         raise HTTPException(500, str(e))
 
 
@@ -102,12 +102,15 @@ def crawl_marketplace_new_results(city: str, category: str, query: str) -> JSONR
         if len(results) > 0:
             search_id = get_or_insert_search_criteria(city, category, query)
             logger.info(f"Accessing database with search_id {search_id}")
-            new_results = get_new_results(search_id, results)
-            if len(new_results) > 0:
-                insert_results(search_id, new_results)
-                remove_stale_results(search_id, results)
+
+            remove_stale_results(search_id, results)
+            insert_new_results(search_id, results)
+            new_results = get_new_results(search_id)
+            db_results = get_results(search_id)
+            set_all_not_new(search_id)
+
             logger.info(f"Found {len(new_results)} new listings.")
-            return JSONResponse(new_results)
+            return JSONResponse(db_results)
         return JSONResponse([])
     
     except AssertionError as e:
@@ -115,7 +118,7 @@ def crawl_marketplace_new_results(city: str, category: str, query: str) -> JSONR
     except RuntimeError as e:
         raise HTTPException(500, str(e))
     except Exception as e:
-        logger.critical(exc_info=True)
+        logger.critical("", exc_info=True)
         raise HTTPException(500, str(e))
 
 
@@ -288,15 +291,15 @@ def parse_listings(listings):
     return parsed
 
 
-def save_cookies(context, file='static/cookies.json'):
+def save_cookies(context, file="static/cookies.json"):
     cookies = context.cookies()
-    with open(file, 'w') as f:
+    with open(file, "w") as f:
         json.dump(cookies, f)
         logger.info("Saved cookies to file.")
 
-def load_cookies(context, file='static/cookies.json'):
+def load_cookies(context, file="static/cookies.json"):
     if os.path.exists(file):
-        with open(file, 'r') as f:
+        with open(file, "r") as f:
             cookies = json.load(f)
             context.add_cookies(cookies)
             logger.info("Loaded saved cookies from file to context.")

@@ -4,7 +4,7 @@ Date Created: 2024-09-01
 Date Modified: 2024-09-09
 Author: SPolton
 Modified By: SPolton
-Version: 1.4.3
+Version: 1.5.0
 Credit: The initial implementation of database.py was assisted by ChatGPT 4o Mini
 """
 
@@ -12,7 +12,11 @@ from os import getenv
 from dotenv import load_dotenv
 from logging import getLogger
 
-from sqlalchemy import create_engine, inspect, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import create_engine, inspect, update
+from sqlalchemy import (
+    Boolean, Column, DateTime, ForeignKey, Integer, 
+    String, Text, UniqueConstraint
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import relationship, sessionmaker
@@ -53,7 +57,7 @@ class Listing(Base):
     price = Column(String)
     location = Column(String)
     image = Column(Text)
-    # is_new = Column(Boolean, default=True)
+    is_new = Column(Boolean, default=True)
     timestamp = Column(DateTime, server_default=func.now())
 
     __table_args__ = (
@@ -64,6 +68,19 @@ class Listing(Base):
 
     def __repr__(self):
         return (f"<Listing(id={self.id}, search_id={self.search_id}, price='{self.price}',\ttitle='{self.title}', location='{self.location}')>")
+    
+    def to_dict(self):
+        """Convert the Listing object to a dictionary."""
+        return {
+            'id': self.id,
+            'search_id': self.search_id,
+            'url': self.url,
+            'title': self.title,
+            'price': self.price,
+            'location': self.location,
+            'image': self.image,
+            'is_new': self.is_new
+        }
 
 
 def init_db():
@@ -96,7 +113,7 @@ def get_or_insert_search_criteria(city, category, query):
     
     return search_criteria.id
 
-def insert_results(search_id, results):
+def insert_new_results(search_id, results):
     """Insert new results into the database."""
     for listing in results:
         new_result = Listing(
@@ -105,14 +122,32 @@ def insert_results(search_id, results):
             title=listing.get("title"),
             price=listing.get("price"),
             location=listing.get("location"),
-            image=listing.get("image")
+            image=listing.get("image"),
+            is_new = True
         )
         try:
             session.add(new_result)
             session.commit()
         except IntegrityError:
             session.rollback()  # Rollback the transaction on error
-            logger.warning(f"Duplicate entry detected for URL: {listing.get('url')}")
+            logger.info(f"Duplicate entry detected for URL: {listing.get('url')}")
+
+def set_all_not_new(search_id):
+    """Update all records with the given search_id to set is_new = False."""
+    try:
+        # Perform the bulk update
+        session.execute(
+            update(Listing)
+            .where(Listing.search_id == search_id)
+            .values(is_new=False)
+        )
+        # Commit the transaction
+        session.commit()
+    except Exception as e:
+        # Rollback the transaction on error
+        session.rollback()
+        # Log the error
+        logger.error(f"An error occurred while updating records: {e}")
 
 def remove_stale_results(search_id, results):
     """Remove listings that are no longer present in the latest results."""
@@ -125,19 +160,12 @@ def remove_stale_results(search_id, results):
 def get_results(search_id):
     """Retrieve existing results for a given search_id."""
     results = session.query(Listing).filter_by(search_id=search_id).all()
-    return results
+    return [listing.to_dict() for listing in results]
 
-def get_new_results(search_id, results):
-    """Identify and return new results not present in the database for a given search_id."""
-    existing_urls = {result.url for result in get_results(search_id)}
-    
-    new_results = [
-        listing for listing in results
-        if listing.get("url") not in existing_urls
-    ]
-    
-    return new_results
-
+def get_new_results(search_id):
+    """Identify and return new results labled as 'new' in the database for a given search_id."""
+    new_results = session.query(Listing).filter_by(search_id=search_id, is_new=True).all()
+    return [listing.to_dict() for listing in new_results]
 
 def print_database():
     """Print the 'search_criteria' and 'results' tables to the terminal."""

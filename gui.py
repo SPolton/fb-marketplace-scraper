@@ -4,7 +4,7 @@ Date Created: 2024-01-24
 Date Modified: 2024-09-09
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.5.1
+Version: 1.5.2
 Usage: steamlit run gui.py
 """
 
@@ -70,7 +70,7 @@ def find_results(params):
         message.info("Attempting to find listings...")
         
         try:
-            if new_only:
+            if show_new:
                 state.results = get_crawl_results(params, API_URL_CRAWL_NEW)
             else:
                 state.results = get_crawl_results(params, API_URL_CRAWL)
@@ -96,7 +96,7 @@ def display_results(results):
                 if item.get("is_new"):
                     st.header("New!")
                     mes = f"New listing: {item.get("price")}, {item.get("location")}\n'{item.get("title")}'\n{item.get("url")}"
-                    send_ntfy("new_fb_listing", mes)
+                    send_ntfy(ntfy_topic, mes)
                 st.write(item.get("price"))
                 st.write(item.get("location"))
                 st.write(item.get("url"))
@@ -151,13 +151,14 @@ with col[1]:
         for i, condition in enumerate(CONDITION):
             condition_values.append(st.checkbox(condition))
 
-col = st.columns(3)
+col = st.columns(2)
 with col[0]:
-    new_only = st.checkbox("New Listings Only")
+    show_new = st.checkbox("Lable New Listings", value=True)
+    if show_new:
+        ntfy_topic = st.text_input("ntfy Topic", value="new_fb_listing", disabled=not show_new)
 with col[1]:
     set_schedule = st.checkbox("Schedule")
-if set_schedule:
-    with col[2]:
+    if set_schedule:
         state.frequency = st.number_input("Schedule Frequency (s)", min_value=5, format="%d", value=60, disabled=not set_schedule)
 
 col = st.columns(4)
@@ -192,6 +193,6 @@ display_results(state.results)
 while state.scheduled:
     do_task = countdown_timer()
     if do_task:
-        #find_results(state.params)
+        find_results(state.params)
         if state.scheduled:
             state.duration = state.frequency
