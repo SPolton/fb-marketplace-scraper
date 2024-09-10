@@ -80,7 +80,7 @@ class Listing(Base):
             'location': self.location,
             'image': self.image,
             'is_new': self.is_new,
-            'timestamp': self.timestamp
+            'timestamp': str(self.timestamp)
         }
 
 
