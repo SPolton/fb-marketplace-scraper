@@ -4,7 +4,7 @@ Date Created: 2024-09-01
 Date Modified: 2024-09-09
 Author: SPolton
 Modified By: SPolton
-Version: 1.5.0
+Version: 1.5.1
 Credit: The initial implementation of database.py was assisted by ChatGPT 4o Mini
 """
 
@@ -79,7 +79,8 @@ class Listing(Base):
             'price': self.price,
             'location': self.location,
             'image': self.image,
-            'is_new': self.is_new
+            'is_new': self.is_new,
+            'timestamp': self.timestamp
         }
 
 
@@ -115,22 +116,35 @@ def get_or_insert_search_criteria(city, category, query):
 
 def insert_new_results(search_id, results):
     """Insert new results into the database."""
-    for listing in results:
-        new_result = Listing(
+    existing_urls = {listing.url for listing in session.query(Listing.url).filter_by(search_id=search_id).all()}
+
+    # Filter out results with URLs that already exist
+    new_results = [
+        Listing(
             search_id=search_id,
             url=listing.get("url"),
             title=listing.get("title"),
             price=listing.get("price"),
             location=listing.get("location"),
             image=listing.get("image"),
-            is_new = True
+            is_new=True
         )
-        try:
-            session.add(new_result)
+        for listing in results
+        if listing.get("url") not in existing_urls
+    ]
+
+    # Bulk insert new results
+    try:
+        if new_results:
+            logger.info(f"Bulk inserting {len(new_results)} results.")
+            session.bulk_save_objects(new_results)
             session.commit()
-        except IntegrityError:
-            session.rollback()  # Rollback the transaction on error
-            logger.info(f"Duplicate entry detected for URL: {listing.get('url')}")
+        else:
+            logger.info("No new results to insert.")
+    except Exception as e:
+        session.rollback()  # Rollback the transaction on error
+        logger.error(f"An error occurred during bulk insertion: {e}")
+
 
 def set_all_not_new(search_id):
     """Update all records with the given search_id to set is_new = False."""
