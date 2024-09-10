@@ -1,10 +1,10 @@
 """
 Description: This file hosts the web GUI for the Facebook Marketplace Scraper.
 Date Created: 2024-01-24
-Date Modified: 2024-09-09
+Date Modified: 2024-09-10
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.5.3
+Version: 1.5.4
 Usage: steamlit run gui.py
 """
 
@@ -91,6 +91,7 @@ def notify_new(results, ntfy_topic, notify_limit=None):
             title = f"New Listing: {item.get("price")}"
             message = f"{item.get("title")}"
             send_ntfy(ntfy_topic, message, title, link=item.get("url"), img=item.get("image"))
+    return new_count
 
 def display_results(results, message=st.empty()):
     """List all the results and update info message with total."""
@@ -196,6 +197,7 @@ message = st.empty()
 
 # If a button is clicked.
 if submit_pressed:
+    stop_schedule()
     # Get params and encode the url for api
     state.params = format_crawl_params(city, category, query, sort,
                                 min_price, max_price, condition_values)
@@ -203,18 +205,26 @@ if submit_pressed:
     notify_new(state.results, ntfy_topic, 3)
     if set_schedule and not state.scheduled:
         start_schedule(state.frequency)
-    elif not set_schedule:
-        stop_schedule()
+
 elif state.cancel_pressed:
     stop_schedule()
 
-display_results(state.results, message)
+results_container = st.container()
+with results_container:
+    results_container.empty()
+    display_results(state.results, message)
 
 # Scheduled task
 while state.scheduled:
     do_task = countdown_timer(countdown_message)
     if do_task:
         state.results = find_results(state.params, message, show_new)
-        notify_new(state.results, ntfy_topic)
-        if state.scheduled:
-            state.duration = state.frequency
+        new_count = notify_new(state.results, ntfy_topic)
+
+        if new_count > 0:
+            with results_container:
+                results_container.empty()
+                display_results(state.results, message)
+
+    if state.scheduled:
+        state.duration = state.frequency
