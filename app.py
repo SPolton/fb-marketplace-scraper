@@ -4,7 +4,7 @@ Date Created: 2024-01-24
 Date Modified: 2024-09-09
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.5.0
+Version: 1.5.1
 Usage: python app.py
 """
 
@@ -91,7 +91,7 @@ def crawl_marketplace(city: str, category: str, query: str) -> JSONResponse:
 def crawl_marketplace_new_results(city: str, category: str, query: str) -> JSONResponse:
     """
     Attempts to scrape Facebook Marketplace for new listings.
-    Results are compared to the previous results
+    Results are compared to the previous results.
     Returns: A JSON Response containing a list of new listings.
     Throws: HTTPException 500 on RuntimeError
     """
@@ -99,7 +99,7 @@ def crawl_marketplace_new_results(city: str, category: str, query: str) -> JSONR
         logger.debug("Entering crawl_marketplace_new_listings")
         results = crawl_marketplace_logic(city, category, query)
 
-        if len(results) > 0:
+        if len(results) > 0 and category != "test":
             search_id = get_or_insert_search_criteria(city, category, query)
             logger.info(f"Accessing database with search_id {search_id}")
 
@@ -111,7 +111,7 @@ def crawl_marketplace_new_results(city: str, category: str, query: str) -> JSONR
 
             logger.info(f"Found {len(new_results)} new listings.")
             return JSONResponse(db_results)
-        return JSONResponse([])
+        return JSONResponse(results)
     
     except AssertionError as e:
         raise HTTPException(401, str(e))
@@ -137,11 +137,12 @@ def crawl_marketplace_logic(city, category, query):
     if category=="test":
         time.sleep(1)
         return [{
-            "image": None,
-            "title": "Test",
-            "price": "$100",
-            "url": None,
+            "image": "https://scontent.fyyc8-1.fna.fbcdn.net/v/t45.5328-4/459002811_1615008492394078_3238608714812733174_n.jpg?stp=c0.43.261.261a_dst-jpg_p261x260&_nc_cat=111&ccb=1-7&_nc_sid=247b10&_nc_ohc=xmu2EIsIktQQ7kNvgF31Fam&_nc_ht=scontent.fyyc8-1.fna&_nc_gid=AzQb3MuKJAjgBnhI531M_H-&oh=00_AYA6PGkYXBpPw7PuF3-d_n4gp0LV7fw7qrylUGSOW47keQ&oe=66E564BA",
+            "title": "Apple iPad 7th Gen",
+            "price": "CA$120",
+            "url": "https://www.facebook.com/marketplace/item/1029513038667252/",
             "location": city,
+            "is_new": True
         }]
 
     # Get listings based on the results from the url query.
@@ -158,8 +159,15 @@ def crawl_marketplace_logic(city, category, query):
             logger.debug(f"Opening {marketplace_url}")
             page.goto(marketplace_url)
 
+            # Listen for dialog events and handle them
+            def handle_dialog(dialog):
+                logger.debug(f"Dialog detected with type: {dialog.type}")
+                dialog.dismiss()  # or dialog.accept() based on the scenario
+
+            page.on("dialog", handle_dialog)
+
             # Attempt login if prompted
-            logged_in = None
+            logged_in = True
             login_attempts = 0
             while login_attempts < 3 and page.locator("div#loginform").is_visible():
                 login_attempts += 1
@@ -175,12 +183,15 @@ def crawl_marketplace_logic(city, category, query):
             logger.info("Finished login step.")
 
             if not logged_in:
-                # close potential login popup
-                page.wait_for_load_state("networkidle")
-                close_button = page.query_selector('div[aria-label="Close"][role="button"]')
-                if close_button.is_visible():
-                    close_button.click()
-                    logger.debug("Closed Login Popup.")
+                try:
+                    # close potential login popup
+                    page.wait_for_load_state("networkidle")
+                    close_button = page.query_selector('div[aria-label="Close"][role="button"]')
+                    if close_button.is_visible():
+                        close_button.click()
+                        logger.debug("Closed Login Popup.")
+                except AttributeError:
+                    pass
             else:
                 save_cookies(context)
             
@@ -193,7 +204,7 @@ def crawl_marketplace_logic(city, category, query):
                 logger.debug("Scroll...")
                 page.wait_for_load_state()
 
-            page.wait_for_load_state("networkidle")
+            page.wait_for_load_state()
             html = page.content()
             soup = BeautifulSoup(html, "html.parser")
 

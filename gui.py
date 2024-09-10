@@ -86,9 +86,11 @@ def notify_new(results, ntfy_topic, notify_limit=None):
     for i, item in enumerate(results):
         if item.get("is_new"):
             new_count += 1
-            if notify_limit and new_count < notify_limit:
-                mes = f"New listing: {item.get("price")}, {item.get("location")}\n'{item.get("title")}'\n{item.get("url")}"
-                send_ntfy(ntfy_topic, mes)
+            if notify_limit is not None and new_count > notify_limit:
+                break
+            title = f"New Listing: {item.get("price")}"
+            message = f"{item.get("title")}"
+            send_ntfy(ntfy_topic, message, title, link=item.get("url"), img=item.get("image"))
 
 def display_results(results, message=st.empty()):
     """List all the results and update info message with total."""
@@ -161,7 +163,6 @@ with col[0]:
         if max_price and max_price < min_price:
             error_present = True
             st.error("Max Price less than Min price.")
-
 with col[1]:
     # Contition checkboxes in drawer
     condition_values = []
@@ -172,6 +173,7 @@ with col[1]:
 col = st.columns(2)
 with col[0]:
     show_new = st.checkbox("Lable New Listings", value=True)
+    ntfy_topic = None
     if show_new:
         ntfy_topic = st.text_input("ntfy Topic", value="new_fb_listing", disabled=not show_new).strip()
 with col[1]:

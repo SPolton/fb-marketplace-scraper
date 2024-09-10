@@ -32,7 +32,8 @@ CATEGORIES = [
     "Office-Supplies",
     "Pets",
     "Sports",
-    "Toys"
+    "Toys",
+    "Test"
 ]
 
 SORT = {
