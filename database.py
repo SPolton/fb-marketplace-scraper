@@ -1,7 +1,7 @@
 """
 Description: Save results per search criteria using SQLalchemy and SQLite
 Date Created: 2024-09-01
-Date Modified: 2024-09-09
+Date Modified: 2024-09-10
 Author: SPolton
 Modified By: SPolton
 Version: 1.5.1
@@ -17,9 +17,7 @@ from sqlalchemy import (
     Boolean, Column, DateTime, ForeignKey, Integer, 
     String, Text, UniqueConstraint
 )
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from sqlalchemy.sql import func
 
 load_dotenv()
@@ -61,7 +59,7 @@ class Listing(Base):
     timestamp = Column(DateTime, server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint('search_id', 'url', name='uix_search_id_url'),
+        UniqueConstraint("search_id", "url", name="uix_search_id_url"),
     )
     
     search_criteria = relationship("SearchCriteria", back_populates="results")
@@ -71,16 +69,17 @@ class Listing(Base):
     
     def to_dict(self):
         """Convert the Listing object to a dictionary."""
+        json_friendly_time = self.timestamp.astimezone().strftime("%y-%m-%d %H:%M:%S%z %Z")
         return {
-            'id': self.id,
-            'search_id': self.search_id,
-            'url': self.url,
-            'title': self.title,
-            'price': self.price,
-            'location': self.location,
-            'image': self.image,
-            'is_new': self.is_new,
-            'timestamp': str(self.timestamp)
+            "id": self.id,
+            "search_id": self.search_id,
+            "url": self.url,
+            "title": self.title,
+            "price": self.price,
+            "location": self.location,
+            "image": self.image,
+            "is_new": self.is_new,
+            "timestamp": json_friendly_time
         }
 
 
