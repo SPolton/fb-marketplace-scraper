@@ -4,7 +4,7 @@ Date Created: 2024-01-24
 Date Modified: 2024-09-09
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.5.2
+Version: 1.5.3
 Usage: steamlit run gui.py
 """
 
@@ -18,7 +18,7 @@ from cities import CITIES
 from models import CATEGORIES, SORT, CONDITION
 
 
-# Keep state until a button is pressed to change the state.
+# Keep state across re-execution.
 state = st.session_state
 if "results" not in state:
     state.results = []
@@ -41,7 +41,7 @@ def stop_schedule():
     state.duration = 0
     cancel.empty()
 
-def countdown_timer():
+def countdown_timer(countdown_message):
     """
     Enters a loop that decrements state 'duration' to 0 and updates the countdown message.
     Returns True when state 'duration' reaches 0 and 'scheduled' is True, returns False otherwise.
@@ -63,27 +63,36 @@ def countdown_timer():
         return False
 
 
-def find_results(params):
-    """Call API for listings and save results to state."""
+def find_results(params, message=st.empty(), show_new=False):
+    """Call API for listings and return the results."""
+    results = []
     if params:
-        state.results = []
         message.info("Attempting to find listings...")
         
         try:
             if show_new:
-                state.results = get_crawl_results(params, API_URL_CRAWL_NEW)
+                results = get_crawl_results(params, API_URL_CRAWL_NEW)
             else:
-                state.results = get_crawl_results(params, API_URL_CRAWL)
-            message.info(f"Number of results: {len(state.results)}")
+                results = get_crawl_results(params, API_URL_CRAWL)
+            message.info(f"Number of results: {len(results)}")
 
         except RuntimeError as e:
             message.error(str(e))
+    return results
 
-def display_results(results):
-    """Show the results saved in state."""
-    if len(results) > 0:
-        message.info(f"Number of results: {len(results)}")
+def notify_new(results, ntfy_topic, notify_limit=None):
+    """Send a notification per result containing 'is_new' = True."""
+    new_count = 0
+    for i, item in enumerate(results):
+        if item.get("is_new"):
+            new_count += 1
+            if notify_limit and new_count < notify_limit:
+                mes = f"New listing: {item.get("price")}, {item.get("location")}\n'{item.get("title")}'\n{item.get("url")}"
+                send_ntfy(ntfy_topic, mes)
 
+def display_results(results, message=st.empty()):
+    """List all the results and update info message with total."""
+    new_count = 0
     # Iterate over the session results to display each item.
     for i, item in enumerate(results):
         try:
@@ -94,18 +103,27 @@ def display_results(results):
                     st.image(img_url)
             with col[1]:
                 if item.get("is_new"):
+                    new_count += 1
                     st.header("New!")
-                    mes = f"New listing: {item.get("price")}, {item.get("location")}\n'{item.get("title")}'\n{item.get("url")}"
-                    send_ntfy(ntfy_topic, mes)
                 st.write(item.get("price"))
                 st.write(item.get("location"))
                 st.write(item.get("url"))
+                if timestamp := item.get("timestamp"):
+                    st.write(f"Found at: {timestamp}")
 
         except Exception as e:
             st.error(f"Error displaying listing {i}: {e}")
         finally:
             st.write("----")
-
+    
+    mes_parts = []
+    if len(results) > 0:
+        mes_parts.append(f"Total results: {len(results)}")
+    if new_count > 0:
+        mes_parts.append(f"New results: {new_count}")
+    if mes_parts:
+        mes_info = ", ".join(mes_parts)
+        message.info(mes_info)
 
 # Create a title for the web app.
 st.title("Facebook Marketplace Scraper")
@@ -155,7 +173,7 @@ col = st.columns(2)
 with col[0]:
     show_new = st.checkbox("Lable New Listings", value=True)
     if show_new:
-        ntfy_topic = st.text_input("ntfy Topic", value="new_fb_listing", disabled=not show_new)
+        ntfy_topic = st.text_input("ntfy Topic", value="new_fb_listing", disabled=not show_new).strip()
 with col[1]:
     set_schedule = st.checkbox("Schedule")
     if set_schedule:
@@ -179,7 +197,8 @@ if submit_pressed:
     # Get params and encode the url for api
     state.params = format_crawl_params(city, category, query, sort,
                                 min_price, max_price, condition_values)
-    find_results(state.params)
+    state.results = find_results(state.params, message, show_new)
+    notify_new(state.results, ntfy_topic, 3)
     if set_schedule and not state.scheduled:
         start_schedule(state.frequency)
     elif not set_schedule:
@@ -187,12 +206,13 @@ if submit_pressed:
 elif state.cancel_pressed:
     stop_schedule()
 
-display_results(state.results)
+display_results(state.results, message)
 
 # Scheduled task
 while state.scheduled:
-    do_task = countdown_timer()
+    do_task = countdown_timer(countdown_message)
     if do_task:
-        find_results(state.params)
+        state.results = find_results(state.params, message, show_new)
+        notify_new(state.results, ntfy_topic)
         if state.scheduled:
             state.duration = state.frequency
