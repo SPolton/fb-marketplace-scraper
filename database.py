@@ -1,10 +1,10 @@
 """
 Description: Save results per search criteria using SQLalchemy and SQLite
 Date Created: 2024-09-01
-Date Modified: 2024-09-10
+Date Modified: 2024-09-11
 Author: SPolton
 Modified By: SPolton
-Version: 1.5.1
+Version: 1.6.0
 Credit: The initial implementation of database.py was assisted by ChatGPT 4o Mini
 """
 
@@ -12,9 +12,9 @@ from os import getenv
 from dotenv import load_dotenv
 from logging import getLogger
 
-from sqlalchemy import create_engine, inspect, update
+from sqlalchemy import create_engine, inspect, delete, update
 from sqlalchemy import (
-    Boolean, Column, DateTime, ForeignKey, Integer, 
+    Boolean, Column, DateTime, ForeignKey, Integer,
     String, Text, UniqueConstraint
 )
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
@@ -50,6 +50,7 @@ class Listing(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     search_id = Column(Integer, ForeignKey("search_criteria.id"))
+    order = Column(Integer)
     url = Column(Text)
     title = Column(String)
     price = Column(String)
@@ -65,7 +66,7 @@ class Listing(Base):
     search_criteria = relationship("SearchCriteria", back_populates="results")
 
     def __repr__(self):
-        return (f"<Listing(id={self.id}, search_id={self.search_id}, price='{self.price}',\ttitle='{self.title}', location='{self.location}')>")
+        return (f"<Listing(search_id={self.search_id}, order={self.order},\tis_new={self.is_new}, price='{self.price}',\ttitle='{self.title}')>")
     
     def to_dict(self):
         """Convert the Listing object to a dictionary."""
@@ -73,6 +74,7 @@ class Listing(Base):
         return {
             "id": self.id,
             "search_id": self.search_id,
+            "order": self.order,
             "url": self.url,
             "title": self.title,
             "price": self.price,
@@ -85,6 +87,7 @@ class Listing(Base):
 
 def init_db():
     """Create tables in the database if they don't exist."""
+    logger.debug("init database.")
     Base.metadata.create_all(engine)
     inspector = inspect(engine)
         
@@ -93,20 +96,28 @@ def init_db():
         raise RuntimeError("Table 'search_criteria' is not available.")
     if "results" not in inspector.get_table_names():
         raise RuntimeError("Table 'results' is not available.")
+    
+def wipe_database():
+    """Wipes the entire database by dropping all tables."""
+    try:
+        Base.metadata.drop_all(engine)
+        logger.info("All tables have been dropped from the database.")
+    except Exception as e:
+        logger.error(f"An error occurred while wiping the database: {e}")
 
 def get_or_insert_search_criteria(city, category, query):
     """Retrieve existing search criteria or create new if not found."""
     search_criteria = session.query(SearchCriteria).filter_by(
-        city=city,
-        category=category,
-        query=query
+        city = city,
+        category = category,
+        query = query
     ).first()
     
     if search_criteria is None:
         search_criteria = SearchCriteria(
-            city=city,
-            category=category,
-            query=query
+            city = city,
+            category = category,
+            query = query
         )
         session.add(search_criteria)
         session.commit()
@@ -120,15 +131,16 @@ def insert_new_results(search_id, results):
     # Filter out results with URLs that already exist
     new_results = [
         Listing(
-            search_id=search_id,
-            url=listing.get("url"),
-            title=listing.get("title"),
-            price=listing.get("price"),
-            location=listing.get("location"),
-            image=listing.get("image"),
-            is_new=True
+            search_id = search_id,
+            order = index + 1,
+            url = listing.get("url"),
+            title = listing.get("title"),
+            price = listing.get("price"),
+            location = listing.get("location"),
+            image = listing.get("image"),
+            is_new = True,
         )
-        for listing in results
+        for index, listing in enumerate(results)
         if listing.get("url") not in existing_urls
     ]
 
@@ -148,37 +160,52 @@ def insert_new_results(search_id, results):
 def set_all_not_new(search_id):
     """Update all records with the given search_id to set is_new = False."""
     try:
-        # Perform the bulk update
-        session.execute(
+        logger.debug(f"set_all_not_new: Performing bulk update on search_id {search_id}")
+
+        # Perform a bulk update of results.
+        stmt = (
             update(Listing)
             .where(Listing.search_id == search_id)
             .values(is_new=False)
         )
-        # Commit the transaction
+        engine_result = session.execute(stmt)
         session.commit()
+        logger.info(f"Updated {engine_result.rowcount} listings with is_new = False.")
+
     except Exception as e:
-        # Rollback the transaction on error
         session.rollback()
-        # Log the error
-        logger.error(f"An error occurred while updating records: {e}")
+        logger.error(f"An error occurred while updating listing 'is_new' records: {e}")
 
 def remove_stale_results(search_id, results):
     """Remove listings that are no longer present in the latest results."""
-    latest_urls = {listing.get("url") for listing in results}
-    stale_results = session.query(Listing).filter_by(search_id=search_id).filter(~Listing.url.in_(latest_urls)).all()
-    for result in stale_results:
-        session.delete(result)
-    session.commit()
+    try:
+        latest_urls = {listing.get("url") for listing in results}
+
+        # Perform a bulk delete of stale results.
+        stmt = delete(Listing).where(
+            Listing.search_id == search_id,
+            ~Listing.url.in_(latest_urls)
+        )
+        engine_result = session.execute(stmt)
+        session.commit()
+        logger.info(f"Deleted {engine_result.rowcount} stale listings.")
+
+    except Exception as e:
+        session.rollback()  # Rollback the transaction on error
+        logger.error(f"An error occurred while removing stale listings: {e}")
 
 def get_results(search_id):
     """Retrieve existing results for a given search_id."""
-    results = session.query(Listing).filter_by(search_id=search_id).all()
+    results = session.query(Listing).filter_by(search_id=search_id).order_by(Listing.order).all()
+    logger.debug(f"get_results: returning {len(results)} results for search_id {search_id}.")
     return [listing.to_dict() for listing in results]
 
 def get_new_results(search_id):
     """Identify and return new results labled as 'new' in the database for a given search_id."""
-    new_results = session.query(Listing).filter_by(search_id=search_id, is_new=True).all()
+    new_results = session.query(Listing).filter_by(search_id=search_id, is_new=True).order_by(Listing.order).all()
+    logger.debug(f"get_new_results: returning {len(new_results)} results for search_id {search_id}.")
     return [listing.to_dict() for listing in new_results]
+
 
 def print_database():
     """Print the 'search_criteria' and 'results' tables to the terminal."""
@@ -191,7 +218,7 @@ def print_database():
         print("No entries found in 'search_criteria' table.")
     
     print("\nresults table:")
-    results = session.query(Listing).all()
+    results = session.query(Listing).order_by(Listing.search_id, Listing.order).all()
     if results:
         for listing in results:
             print(listing)
@@ -200,4 +227,6 @@ def print_database():
 
 if __name__ == "__main__":
     init_db()
+    # wipe_database()
+    # init_db()
     print_database()
