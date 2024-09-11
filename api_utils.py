@@ -1,13 +1,13 @@
 """
 Description: Functions to help with connecting to the API
 Date Created: 2024-08-27
-Date Modified: 2024-08-27
+Date Modified: 2024-09-11
 Author: SPolton
 Modified by: SPolton
-Version: 1.4.0
+Version: 1.4.1
 """
 
-import requests
+import requests, logging
 
 from os import getenv
 from dotenv import load_dotenv
@@ -22,6 +22,7 @@ API_URL_BASE = f"http://{HOST}:{PORT}"
 API_URL_CRAWL = API_URL_BASE + "/crawl_marketplace"
 API_URL_CRAWL_NEW = API_URL_CRAWL + "/new_results"
 
+logger = logging.getLogger(__name__)
 
 def format_crawl_params(city, category, query=None, sort=None, min_price=None,
                      max_price=None, condition_values=None):
@@ -66,7 +67,7 @@ def get_crawl_results(params, api_url=API_URL_CRAWL):
     url = f"{api_url}?{encoded_params}"
 
     try:
-        print(f"\nRequest URL: {url}\n")
+        logger.info(f"\nRequest URL: {url}\n")
         res = requests.get(url, timeout=60)
         res.raise_for_status()  # Throw exception if response not OK
         return res.json()

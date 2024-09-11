@@ -4,12 +4,13 @@ Date Created: 2024-01-24
 Date Modified: 2024-09-11
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.5.6
+Version: 1.5.7
 Usage: steamlit run gui.py
 """
 
 import streamlit as st
-import time
+import time, logging
+from sys import stdout
 
 from api_utils import *
 from notify import send_ntfy
@@ -18,15 +19,30 @@ from cities import CITIES
 from models import CATEGORIES, SORT, CONDITION
 
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
+st_logger = logging.getLogger("gui")
+st_logger.setLevel(logging.INFO)
+
+
 # Keep state across re-execution.
 state = st.session_state
 if "results" not in state:
+    st_logger.debug("Init state.")
     state.results = []
     state.params = None
     state.scheduled = False
-    state.frequency = 60
+    state.frequency = 300  # 5 Minutes
     state.duration = 0
     state.cancel_pressed = False
+else:
+    if state.scheduled and state.duration > 0:
+        # Clear countdown_timer from terminal
+        stdout.write(f"\rCanceled.{" "*30}\r")
+    st_logger.debug("Rerun: State is already defined.")
 
 
 def start_schedule(frequency=None):
@@ -34,16 +50,19 @@ def start_schedule(frequency=None):
     if not frequency:
         frequency = state.frequency
     if not state.scheduled:
+        st_logger.debug("Creating cancel button for schedule.")
         state.cancel_pressed = cancel.button("Cancel Schedule")
     state.scheduled = True
     state.frequency = frequency
     state.duration = frequency
+    st_logger.info(f"Schedule set for duration {state.duration}")
 
 def stop_schedule():
     """Set state 'scheduled' to False, 'duration' to 0, and clear cancel button."""
     state.scheduled = False
     state.duration = 0
     cancel.empty()
+    st_logger.debug("Schedule Stopped.")
 
 def countdown_timer(countdown_message):
     """
@@ -54,13 +73,19 @@ def countdown_timer(countdown_message):
     \nFunction copied and modified from:
     https://github.com/wftanya/facebook-marketplace-scraper/commits/main/gui.py
     """
+    st_logger.debug("Starting countdown timer:")
     countdown_message.empty()
     while state.duration > 0:
         mins, secs = divmod(state.duration, 60)
         timeformat = '{:02d}:{:02d}'.format(mins, secs)
-        countdown_message.text(f"Time until next auto scrape: {timeformat}")
+        time_message = f"Time until next auto scrape: {timeformat}"
+        countdown_message.text(time_message)
+        stdout.write(f"\r{time_message}")
+        stdout.flush()
         time.sleep(1)
         state.duration -= 1
+    stdout.write(f"\rComplete!{" "*len(time_message)}")
+    stdout.flush()
 
 
 def find_results(params, message=st.empty(), show_new=False):
@@ -77,15 +102,16 @@ def find_results(params, message=st.empty(), show_new=False):
 
         except RuntimeError as e:
             message.error(str(e))
+    st_logger.info(f"Recieved {len(results)} results.")
     return results
 
 def notify_new(results, ntfy_topic, notify_limit=None):
     """Send a notification per result containing 'is_new' = True."""
     new_count = 0
-    for i, item in enumerate(results):
+    for item in results:
         if item.get("is_new"):
             new_count += 1
-            if notify_limit and new_count <= notify_limit:
+            if notify_limit is None or new_count <= notify_limit:
                 title = f"New Listing: {item.get("price")}"
                 message = f"{item.get("title")}"
                 send_ntfy(ntfy_topic, message, title, link=item.get("url"), img=item.get("image"))
@@ -94,6 +120,8 @@ def notify_new(results, ntfy_topic, notify_limit=None):
         title = "Additional New Listings"
         message = f"View {new_count-notify_limit} more in streamlit."
         send_ntfy(ntfy_topic, message, title)
+    
+    st_logger.info(f"Found {new_count} new results.")
     return new_count
 
 def display_results(results, message=st.empty()):
@@ -131,6 +159,7 @@ def display_results(results, message=st.empty()):
     if mes_parts:
         mes_info = ", ".join(mes_parts)
         message.info(mes_info)
+        st_logger.info(f"Display: {mes_info}")
 
 # Create a title for the web app.
 st.title("Facebook Marketplace Scraper")
@@ -202,6 +231,7 @@ message = st.empty()
 
 # If a button is clicked.
 if submit_pressed:
+    st_logger.info("Submit pressed.")
     # Get params and encode the url for api
     state.params = format_crawl_params(city, category, query, sort,
                                 min_price, max_price, condition_values)
@@ -214,6 +244,7 @@ if submit_pressed:
         stop_schedule()
 
 elif state.cancel_pressed:
+    st_logger.info("Cancel Pressed.")
     stop_schedule()
 
 results_container = st.expander("Results", True)
@@ -221,12 +252,15 @@ with results_container:
     display_results(state.results, message)
 
 # Scheduled task
-if state.scheduled:
-    countdown_timer(countdown_message) # Waits for timer to finish.
+while state.scheduled:
+    countdown_timer(countdown_message) # Wait for timer to finish.
     
     countdown_message.text("Scraping...")
-    state.results = find_results(state.params, message, show_new)
-    new_count = notify_new(state.results, ntfy_topic)
+    results = find_results(state.params, message, show_new)
+    new_count = notify_new(results, ntfy_topic)
 
     start_schedule()
-    st.experimental_rerun()
+    if len(results) > 0:
+        # Rerun to keep results display updated.
+        state.results = results
+        st.rerun()
