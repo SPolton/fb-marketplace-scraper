@@ -1,10 +1,10 @@
 """
 Description: This file hosts the web GUI for the Facebook Marketplace Scraper.
 Date Created: 2024-01-24
-Date Modified: 2024-09-10
+Date Modified: 2024-09-11
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.5.5
+Version: 1.5.6
 Usage: steamlit run gui.py
 """
 
@@ -85,14 +85,15 @@ def notify_new(results, ntfy_topic, notify_limit=None):
     for i, item in enumerate(results):
         if item.get("is_new"):
             new_count += 1
-            if notify_limit is not None and new_count > notify_limit:
-                title = "Additional New Listings"
-                message = f"View {new_count-notify_limit} more in streamlit."
-                send_ntfy(ntfy_topic, message, title)
-                break
-            title = f"New Listing: {item.get("price")}"
-            message = f"{item.get("title")}"
-            send_ntfy(ntfy_topic, message, title, link=item.get("url"), img=item.get("image"))
+            if notify_limit and new_count <= notify_limit:
+                title = f"New Listing: {item.get("price")}"
+                message = f"{item.get("title")}"
+                send_ntfy(ntfy_topic, message, title, link=item.get("url"), img=item.get("image"))
+
+    if notify_limit and new_count > notify_limit:
+        title = "Additional New Listings"
+        message = f"View {new_count-notify_limit} more in streamlit."
+        send_ntfy(ntfy_topic, message, title)
     return new_count
 
 def display_results(results, message=st.empty()):
