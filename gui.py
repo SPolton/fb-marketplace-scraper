@@ -4,7 +4,7 @@ Date Created: 2024-01-24
 Date Modified: 2024-09-10
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.5.4
+Version: 1.5.5
 Usage: steamlit run gui.py
 """
 
@@ -29,23 +29,29 @@ if "results" not in state:
     state.cancel_pressed = False
 
 
-def start_schedule(frequency):
+def start_schedule(frequency=None):
     """Set state 'scheduled' to True and 'duration' to frequency input."""
+    if not frequency:
+        frequency = state.frequency
+    if not state.scheduled:
+        state.cancel_pressed = cancel.button("Cancel Schedule")
     state.scheduled = True
+    state.frequency = frequency
     state.duration = frequency
-    state.cancel_pressed = cancel.button("Cancel Schedule")
 
 def stop_schedule():
-    """Set state 'scheduled' to False and 'duration' to 0."""
+    """Set state 'scheduled' to False, 'duration' to 0, and clear cancel button."""
     state.scheduled = False
     state.duration = 0
     cancel.empty()
 
 def countdown_timer(countdown_message):
     """
-    Enters a loop that decrements state 'duration' to 0 and updates the countdown message.
-    Returns True when state 'duration' reaches 0 and 'scheduled' is True, returns False otherwise.
-    Function copied and modified:
+    Sets state.duration equal to state.frequency and clears
+    the countdown message, then enters a loop that decrements
+    state.duration to 0 and updates the countdown message.
+    Returns when state 'duration' reaches 0.
+    \nFunction copied and modified from:
     https://github.com/wftanya/facebook-marketplace-scraper/commits/main/gui.py
     """
     countdown_message.empty()
@@ -55,12 +61,6 @@ def countdown_timer(countdown_message):
         countdown_message.text(f"Time until next auto scrape: {timeformat}")
         time.sleep(1)
         state.duration -= 1
-    if state.scheduled:
-        countdown_message.text("Scraping...")
-        return True
-    else:
-        countdown_message.empty()
-        return False
 
 
 def find_results(params, message=st.empty(), show_new=False):
@@ -68,7 +68,6 @@ def find_results(params, message=st.empty(), show_new=False):
     results = []
     if params:
         message.info("Attempting to find listings...")
-        
         try:
             if show_new:
                 results = get_crawl_results(params, API_URL_CRAWL_NEW)
@@ -87,6 +86,9 @@ def notify_new(results, ntfy_topic, notify_limit=None):
         if item.get("is_new"):
             new_count += 1
             if notify_limit is not None and new_count > notify_limit:
+                title = "Additional New Listings"
+                message = f"View {new_count-notify_limit} more in streamlit."
+                send_ntfy(ntfy_topic, message, title)
                 break
             title = f"New Listing: {item.get("price")}"
             message = f"{item.get("title")}"
@@ -115,9 +117,10 @@ def display_results(results, message=st.empty()):
                     st.write(f"Found at: {timestamp}")
 
         except Exception as e:
-            st.error(f"Error displaying listing {i}: {e}")
+            st.error(f"Error displaying listing {i+1}: {e}")
         finally:
-            st.write("----")
+            if i+1 < len(results):
+                st.write("----")
     
     mes_parts = []
     if len(results) > 0:
@@ -173,14 +176,14 @@ with col[1]:
 
 col = st.columns(2)
 with col[0]:
-    show_new = st.checkbox("Lable New Listings", value=True)
+    show_new = st.checkbox("Track New Listings", value=True)
     ntfy_topic = None
     if show_new:
-        ntfy_topic = st.text_input("ntfy Topic", value="new_fb_listing", disabled=not show_new).strip()
+        ntfy_topic = st.text_input("ntfy Topic", value="new_fb_listing_test", disabled=not show_new).strip()
 with col[1]:
     set_schedule = st.checkbox("Schedule")
     if set_schedule:
-        state.frequency = st.number_input("Schedule Frequency (s)", min_value=5, format="%d", value=60, disabled=not set_schedule)
+        frequency = st.number_input("Frequency in seconds", min_value=5, format="%d", value=60, disabled=not set_schedule)
 
 col = st.columns(4)
 with col[0]:
@@ -195,36 +198,34 @@ with col[1]:
 countdown_message = st.empty()
 message = st.empty()
 
+
 # If a button is clicked.
 if submit_pressed:
-    stop_schedule()
     # Get params and encode the url for api
     state.params = format_crawl_params(city, category, query, sort,
                                 min_price, max_price, condition_values)
     state.results = find_results(state.params, message, show_new)
-    notify_new(state.results, ntfy_topic, 3)
-    if set_schedule and not state.scheduled:
-        start_schedule(state.frequency)
+    notify_new(state.results, ntfy_topic, 2)
+    
+    if set_schedule:
+        start_schedule(frequency)
+    else:
+        stop_schedule()
 
 elif state.cancel_pressed:
     stop_schedule()
 
-results_container = st.container()
+results_container = st.expander("Results", True)
 with results_container:
-    results_container.empty()
     display_results(state.results, message)
 
 # Scheduled task
-while state.scheduled:
-    do_task = countdown_timer(countdown_message)
-    if do_task:
-        state.results = find_results(state.params, message, show_new)
-        new_count = notify_new(state.results, ntfy_topic)
+if state.scheduled:
+    countdown_timer(countdown_message) # Waits for timer to finish.
+    
+    countdown_message.text("Scraping...")
+    state.results = find_results(state.params, message, show_new)
+    new_count = notify_new(state.results, ntfy_topic)
 
-        if new_count > 0:
-            with results_container:
-                results_container.empty()
-                display_results(state.results, message)
-
-    if state.scheduled:
-        state.duration = state.frequency
+    start_schedule()
+    st.experimental_rerun()

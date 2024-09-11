@@ -81,6 +81,6 @@ def get_crawl_results(params, api_url=API_URL_CRAWL):
                            f"\n\n{e}\n\nDetails: {detail}")
     except requests.exceptions.ConnectionError as e:
         raise RuntimeError(f"Could not establish a connection to the API." \
-                           f"The sever might be down.\n\n{e}")
+                           f" The sever might be down.\n\n{e}")
     except requests.exceptions.RequestException as e:
         raise RuntimeError(f"There was a problem with the request.\n\n{e}")
