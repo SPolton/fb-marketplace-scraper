@@ -16,7 +16,8 @@ This open-source program uses Python to scrape data from Facebook Marketplace. A
 
 ### GUI Features:
 - Enter search parameters and press the submission button to start scraping. 
-- Displays: Titles, images, prices, locations, and item URLs.
+- Display Per Listing: Title, image, price, location, item URL, and New.
+- Set scheduled auto scrape, see time until auto scrape, and cancel schedule.
 
 Search parameters:
 - City: Select from a list of supported cities.
@@ -25,6 +26,12 @@ Search parameters:
 - Sort By: Select how to sort the results.
 - Price Range: Set the min and max price.
 - Condition: Checkboxes for the item condition.
+
+Search settings:
+- Track new Listings: Checkbox for API to track new results using a database.
+- ntfy Topic: Send push notifications to this nfty topic.
+- Schedule: Checkbox to set auto scrape every set time.
+- Frequency: The time (in seconds) before each auto scrape.
 
 ### API:
 - IP information retrieval.
@@ -36,6 +43,7 @@ This program can be customized to your personal/organizational needs.
 - Streamlit GUI
 - Playwright
 - BeautifulSoup
+- SQLAlchemy
   
 ### Language: 
 - [Python](https://www.python.org/)
@@ -43,17 +51,24 @@ This program can be customized to your personal/organizational needs.
 ### Flow diagrams:
 
 ### Requirements:
+See requirements.txt
 - Python 3.x
 - Playwright
 - Streamlit
 - BeautifulSoup
+- SQLAlchemy
   
 ### Modules:
+app.py:
+- FastAPI for API creation
 - Playwright for web crawling
 - BeautifulSoup for HTML parsing
-- FastAPI for API creation
 - JSON for data formatting
 - Uvicorn for running the server
+
+Database.py:
+- SQLite database for tracking listings.
+- SQLAlchemy for managing the SQLite database.
   
 ### Implementation
 - Browser automation and data scraping using Playwright
