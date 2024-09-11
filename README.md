@@ -12,14 +12,19 @@
 Use the software provided at your own risk. I cannot be held responsible for any potential consequences, including potential bans from Meta.
 ```
 
+
 Overview
 ========
 
-This open-source program uses Python to scrape data from Facebook Marketplace. A Streamlit web GUI allows for various search parameters to be submitted to the backend API. The program uses Playwright to navigate the Facebook Marketplace website and BeautifulSoup to extract relevant data. It then sends and displays the results in the Streamlit web GUI.
+This open-source program uses Python to scrape data from Facebook Marketplace.
+A Streamlit web GUI allows for various search parameters to be submitted to the backend API.
+The program uses Playwright to navigate the Facebook Marketplace website and BeautifulSoup to extract relevant data.
+It then sends and displays the results in the Streamlit web GUI.
 
 GUI Features:
 --------
 
+User friendly Streamlit interface for api communication.
 - Enter search parameters and press the submission button to start scraping. 
 - Display Per Listing: Title, image, price, location, item URL, and New.
 - Set scheduled auto scrape, see time until auto scrape, and cancel schedule.
@@ -65,36 +70,18 @@ See requirements.txt
 - Streamlit
 - BeautifulSoup
 - SQLAlchemy
-  
-### Modules:
-
-app.py:
-- FastAPI for API creation
-- Playwright for web crawling
-- BeautifulSoup for HTML parsing
-- JSON for data formatting
-- Uvicorn for running the server
-
-Database.py:
-- SQLite database for tracking listings.
-- SQLAlchemy for managing the SQLite database.
-  
-### Implementation
-
-- Browser automation and data scraping using Playwright
-- HTML content parsing with BeautifulSoup
-- Data returned in JSON format
-- Application server run using Uvicorn
 
 
 Database Schema:
---------
+========
 
-- Tables: search_criteria, results
-- The database is primarily used by the API for tracking new listings.
+The database is primarily used by the API for tracking new listings.
+- Tables: SearchCriteria, Listing
+- Names: search_criteria, results
 
-##### search_criteria:
+### SearchCriteria:
 
+- Table Name: search_criteria
 - Description: Stores criteria used for searching.
 
 - Columns:
@@ -107,14 +94,15 @@ Database Schema:
 - Relationships:
     results (One-to-Many): Relationship to Listing table. A single search criteria can be associated with multiple listings.
 
-##### results:
+### Listing:
 
+- Table Name: results
 - Description: Stores individual search results associated with specific search criteria.
 
 - Columns:
   - id (Integer, Primary Key)
   - search_id (Integer, Foreign Key): Foreign key referencing search_criteria.id.
-  - order (Integer): Order of the listing within the search results.
+  - order (Integer): Order of the listings as found on facebook from search.
   - url (Text): URL of the listing.
   - title (String)
   - price (String)
@@ -126,5 +114,49 @@ Database Schema:
 - Constraints:
   - Unique constraint on search_id and url to ensure that the same URL does not appear more than once for a given search criteria.
 
-  Relationships:
+- Relationships:
   - search_criteria (Many-to-One): Relationship to SearchCriteria table. Each listing is associated with one search criteria.
+
+#### Notes:
+
+  - The UniqueConstraint on search_id and url in the results table prevents duplicate URL entries in a search criteria.
+  - Ensure that search_id in the results table references an existing id in the search_criteria table.
+
+
+Implementation
+========
+
+### app.py
+
+Hosts the api:
+- Logger for info and debugging.
+- Api created with FastAPI.
+- Application server run using Uvicorn.
+- Browser automation and data scraping using Playwright.
+- HTML content parsing with BeautifulSoup.
+- Data returned in JSON format.
+
+### database.py
+
+Stores marketplace data:
+- Logger for info and debugging.
+- Uses SQLAlchemy to manage a SQLite database.
+- Insert lists of results into database under search_id.
+
+### gui.py
+
+Streamlit interface:
+- Makes use of api_utils.py and notify.py
+
+#### api_utils.py
+
+Contains helper functions for establishing app.py connection.
+- API URLs defined.
+- Function to return formatted parameters.
+- Function to return results from API based on params.
+
+### notify.py
+
+Send a post request to ntfy server:
+- Logger for info and debugging.
+- Specify: ntfy_topic, message, title, priority, link, image
