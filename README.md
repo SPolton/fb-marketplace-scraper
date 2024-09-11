@@ -1,9 +1,5 @@
 # facebook-marketplace-scraper
 
-<p align="center">
-  <img src="static/preview.jpg">
-</p>
-
 <h3 align="center">
   An open-source Python program to scrape Facebook Marketplace using Playwright, BeautifulSoup, and FastAPI with a Streamlit GUI.
 <h3 align="center">
@@ -21,13 +17,17 @@ A Streamlit web GUI allows for various search parameters to be submitted to the 
 The program uses Playwright to navigate the Facebook Marketplace website and BeautifulSoup to extract relevant data.
 It then sends and displays the results in the Streamlit web GUI.
 
+<p align="center">
+  <img src="static/preview.jpg">
+</p>
+
 GUI Features:
 --------
 
 User friendly Streamlit interface for api communication.
 - Enter search parameters and press the submission button to start scraping. 
-- Display Per Listing: Title, image, price, location, item URL, and New.
 - Set scheduled auto scrape, see time until auto scrape, and cancel schedule.
+- Display Results Per Listing: Title, image, price, location, item URL, and New.
 
 Search parameters:
 - City: Select from a list of supported cities.
@@ -50,7 +50,11 @@ API:
 - Root: Displays a welcome message.
 - Data scraping: Parameters include city, category, and query
 
-### Customization
+### Installation
+
+Todo
+
+#### Customization
 
 This program can be customized to your personal/organizational needs.
 - Streamlit GUI
@@ -58,11 +62,11 @@ This program can be customized to your personal/organizational needs.
 - BeautifulSoup
 - SQLAlchemy
   
-### Language:
+#### Language:
 
 - [Python](https://www.python.org/)
 
-### Requirements:
+#### Requirements:
 
 See requirements.txt
 - Python 3.x
@@ -126,10 +130,11 @@ The database is primarily used by the API for tracking new listings.
 Implementation
 ========
 
+Logger for info and debugging in all files.
+
 ### app.py
 
 Hosts the api:
-- Logger for info and debugging.
 - Api created with FastAPI.
 - Application server run using Uvicorn.
 - Browser automation and data scraping using Playwright.
@@ -139,7 +144,6 @@ Hosts the api:
 ### database.py
 
 Stores marketplace data:
-- Logger for info and debugging.
 - Uses SQLAlchemy to manage a SQLite database.
 - Insert lists of results into database under search_id.
 
@@ -148,7 +152,7 @@ Stores marketplace data:
 Streamlit interface:
 - Makes use of api_utils.py and notify.py
 
-#### api_utils.py
+### api_utils.py
 
 Contains helper functions for establishing app.py connection.
 - API URLs defined.
@@ -158,5 +162,4 @@ Contains helper functions for establishing app.py connection.
 ### notify.py
 
 Send a post request to ntfy server:
-- Logger for info and debugging.
 - Specify: ntfy_topic, message, title, priority, link, image
