@@ -12,9 +12,9 @@ Use the software provided at your own risk. I cannot be held responsible for any
 Overview
 ========
 
-This open-source program uses Python to scrape data from Facebook Marketplace.
+This open-source program uses Python to scrape listing data from Facebook Marketplace.
 The Streamlit web GUI allows for various search parameters to be submitted to the backend API, then displays the results.
-Additianally, scheduled auto scrapes can be set, with notifications of new listings sent to your device via ntfy.
+Additionally, scheduled auto scrapes can be set, with notifications of new listings sent to your device via ntfy.
 The API uses Playwright to navigate the Facebook Marketplace website and BeautifulSoup to extract relevant data.
 New listings are tracked with an SQLite database, which is managed by SQLAlchemy.
 
@@ -99,6 +99,7 @@ Usage
 
 ### Notifications
 
+ntfy: recieve push notifications on your phone or desktop via scripts from any computer
 - [Get the ntfy app](https://docs.ntfy.sh/)
   
 ### Customization
@@ -141,7 +142,7 @@ The database is primarily used by the API for tracking new listings.
 - Columns:
   - id (Integer, Primary Key)
   - search_id (Integer, Foreign Key): Foreign key referencing search_criteria.id.
-  - order (Integer): Order of the listings as found on facebook from search.
+  - order (Integer): Order of the listings as found on Facebook from search.
   - url (Text): URL of the listing.
   - title (String)
   - price (String)

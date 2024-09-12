@@ -5,7 +5,7 @@ Date Modified: 2024-09-11
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
 Version: 1.5.7
-Usage: steamlit run gui.py
+Usage: streamlit run gui.py
 """
 
 import streamlit as st
@@ -84,8 +84,7 @@ def countdown_timer(countdown_message):
         stdout.flush()
         time.sleep(1)
         state.duration -= 1
-    stdout.write(f"\rComplete!{" "*len(time_message)}")
-    stdout.flush()
+    stdout.write(f"\rComplete!{" "*len(time_message)}\n")
 
 
 def find_results(params, message=st.empty(), show_new=False):
@@ -260,7 +259,7 @@ while state.scheduled:
     new_count = notify_new(results, ntfy_topic)
 
     start_schedule()
-    if len(results) > 0:
+    if len(results) > 0 and new_count > 0:
         # Rerun to keep results display updated.
         state.results = results
         st.rerun()

@@ -67,7 +67,7 @@ def get_crawl_results(params, api_url=API_URL_CRAWL):
     url = f"{api_url}?{encoded_params}"
 
     try:
-        logger.info(f"\nRequest URL: {url}\n")
+        logger.info(f"Request URL:\n{url}\n")
         res = requests.get(url, timeout=60)
         res.raise_for_status()  # Throw exception if response not OK
         return res.json()
