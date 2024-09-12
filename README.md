@@ -13,9 +13,10 @@ Overview
 ========
 
 This open-source program uses Python to scrape data from Facebook Marketplace.
-A Streamlit web GUI allows for various search parameters to be submitted to the backend API.
-The program uses Playwright to navigate the Facebook Marketplace website and BeautifulSoup to extract relevant data.
-It then sends and displays the results in the Streamlit web GUI.
+The Streamlit web GUI allows for various search parameters to be submitted to the backend API, then displays the results.
+Additianally, scheduled auto scrapes can be set, with notifications of new listings sent to your device via ntfy.
+The API uses Playwright to navigate the Facebook Marketplace website and BeautifulSoup to extract relevant data.
+New listings are tracked with an SQLite database, which is managed by SQLAlchemy.
 
 <p align="center">
   <img src="static/preview.jpg">
@@ -49,31 +50,65 @@ API:
 - IP information retrieval.
 - Root: Displays a welcome message.
 - Data scraping: Parameters include city, category, and query
+  - Save listings to database and track new results.
 
-### Installation
+### Language:
 
-Todo
+- [Python 3.x](https://www.python.org/)
 
-#### Customization
+Installation
+========
+
+1. Clone the repository:
+```bash
+git clone https://github.com/SPolton/fb-marketplace-scraper
+```
+
+2. Install dependencies in virtual environment:
+- **Windows**:
+  ```cmd
+  python -m venv env
+  env\Scripts\activate
+  pip install -r requirements.txt
+  ```
+
+- **Linux/MacOS**:
+  ```bash
+  python3 -m venv env
+  source env/bin/activate
+  pip3 install -r requirements.txt
+  ```
+
+Usage
+========
+
+- **Windows**:
+  To run the project, open `run.bat` and type `start`
+  
+- **Linux/MacOS**
+  - To run API in a terminal:
+    ``` bash
+    source env/bin/activate
+    python3 app.py
+    ```
+  - To run GUI in another terminal:
+    ``` bash
+    source env/bin/activate
+    streamlit run gui.py
+    ```
+
+### Notifications
+
+- [Get the ntfy app](https://docs.ntfy.sh/)
+  
+### Customization
 
 This program can be customized to your personal/organizational needs.
 - Streamlit GUI
 - Playwright
 - BeautifulSoup
 - SQLAlchemy
-  
-#### Language:
-
-- [Python](https://www.python.org/)
-
-#### Requirements:
-
-See requirements.txt
-- Python 3.x
-- Playwright
-- Streamlit
-- BeautifulSoup
-- SQLAlchemy
+- Notifications
 
 
 Database Schema:
@@ -139,6 +174,7 @@ Hosts the api:
 - Application server run using Uvicorn.
 - Browser automation and data scraping using Playwright.
 - HTML content parsing with BeautifulSoup.
+- Makes use of database.py
 - Data returned in JSON format.
 
 ### database.py
@@ -162,4 +198,5 @@ Contains helper functions for establishing app.py connection.
 ### notify.py
 
 Send a post request to ntfy server:
-- Specify: ntfy_topic, message, title, priority, link, image
+- Specify: ntfy_topic, message
+- Optional: title, priority, link, image
