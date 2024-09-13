@@ -67,17 +67,42 @@ git clone https://github.com/SPolton/fb-marketplace-scraper
 2. Install dependencies in virtual environment:
 - **Windows**:
   ```cmd
-  python -m venv env
-  env\Scripts\activate
+  python -m venv venv
+  venv\Scripts\activate
   pip install -r requirements.txt
   ```
 
 - **Linux/MacOS**:
   ```bash
-  python3 -m venv env
-  source env/bin/activate
+  python3 -m venv venv
+  source venv/bin/activate
   pip3 install -r requirements.txt
   ```
+
+3. Setup environment variables:
+- Create a file named `.env` in the project root directory.
+
+- Fill the `.env` file with personal info and preferences:
+  - **Required:**
+    ```
+    # Fill your Facebook login details here.
+    FB_USER = mylogin@dummymail.com  # Can be email or username
+    FB_PASSWORD = abc123
+    ```
+
+  - **Optional:**
+    If left out, defaults to below.
+    ```
+    # Specify API host and port.
+    HOST = 127.0.0.1  # local host
+    PORT = 8000
+
+    # SQLite database file location.
+    DATABASE = static/search_results.db
+
+    NTFY_SERVER = https://ntfy.sh
+    ```
+
 
 Usage
 ========
@@ -99,8 +124,8 @@ Usage
 
 ### Notifications
 
-ntfy: recieve push notifications on your phone or desktop via scripts from any computer
-- [Get the ntfy app](https://docs.ntfy.sh/)
+Open-source ntfy: recieve push notifications on your phone or desktop via scripts from any computer
+- [Geting started with ntfy](https://docs.ntfy.sh/)
   
 ### Customization
 
