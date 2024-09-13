@@ -1,26 +1,28 @@
 """
 Description: Functions to help with connecting to the API
 Date Created: 2024-08-27
-Date Modified: 2024-08-27
+Date Modified: 2024-09-11
 Author: SPolton
 Modified by: SPolton
+Version: 1.4.1
 """
 
+import requests, logging
 
-import os
-import requests
-
+from os import getenv
 from dotenv import load_dotenv
 from urllib.parse import urlencode
 from models import CONDITION
 
 load_dotenv()
-HOST = os.getenv('HOST', "127.0.0.1")
-PORT = int(os.getenv('PORT', 8000))
+HOST = getenv('HOST', "127.0.0.1")
+PORT = int(getenv('PORT', 8000))
 
 API_URL_BASE = f"http://{HOST}:{PORT}"
-API_URL_CRAWL = API_URL_BASE + "/crawl_facebook_marketplace"
+API_URL_CRAWL = API_URL_BASE + "/crawl_marketplace"
+API_URL_CRAWL_NEW = API_URL_CRAWL + "/new_results"
 
+logger = logging.getLogger(__name__)
 
 def format_crawl_params(city, category, query=None, sort=None, min_price=None,
                      max_price=None, condition_values=None):
@@ -56,16 +58,16 @@ def format_crawl_params(city, category, query=None, sort=None, min_price=None,
     return params
 
 
-def get_crawl_results(params):
+def get_crawl_results(params, api_url=API_URL_CRAWL):
     """
     Attempts to conncet to the API and return the results.
     Throws: RuntimeError
     """
     encoded_params = urlencode(params)
-    url = f"{API_URL_CRAWL}?{encoded_params}"
+    url = f"{api_url}?{encoded_params}"
 
     try:
-        print(f"\nRequest URL: {url}\n")
+        logger.info(f"Request URL:\n{url}\n")
         res = requests.get(url, timeout=60)
         res.raise_for_status()  # Throw exception if response not OK
         return res.json()
@@ -80,6 +82,6 @@ def get_crawl_results(params):
                            f"\n\n{e}\n\nDetails: {detail}")
     except requests.exceptions.ConnectionError as e:
         raise RuntimeError(f"Could not establish a connection to the API." \
-                           f"The sever might be down.\n\n{e}")
+                           f" The sever might be down.\n\n{e}")
     except requests.exceptions.RequestException as e:
         raise RuntimeError(f"There was a problem with the request.\n\n{e}")
