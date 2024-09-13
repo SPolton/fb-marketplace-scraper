@@ -105,20 +105,31 @@ def find_results(params, message=st.empty(), show_new=False):
     return results
 
 def notify_new(results, ntfy_topic, notify_limit=None):
-    """Send a notification per result containing 'is_new' = True."""
+    """
+    Send a ntfy notification per result containing 'is_new' = True.
+    """
+    order_to_priority = {1:5, 2:4, 3:4, 4:3, 5:3}
     new_count = 0
-    for item in results:
+    for i, item in enumerate(results):
         if item.get("is_new"):
             new_count += 1
+
+            # Limit notifications
             if notify_limit is None or new_count <= notify_limit:
-                title = f"New Listing: {item.get("price")}"
-                message = f"{item.get("title")}"
-                send_ntfy(ntfy_topic, message, title, link=item.get("url"), img=item.get("image"))
+                order = item.get("order", i + 1)
+                priority = order_to_priority.get(order, 2)
+
+                # Attempt to filter some listings that appear as "new"
+                # because of it replacing the spot of sold listings.
+                if priority > 2 or order < len(results)/2:
+                    title = f"New Listing: {item.get("price")}"
+                    message = f"{item.get("title")}, {item.get("url")}"
+                    send_ntfy(ntfy_topic, message, title, priority, link=item.get("url"), img=item.get("image"))
 
     if notify_limit and new_count > notify_limit:
         title = "Additional New Listings"
         message = f"View {new_count-notify_limit} more in streamlit."
-        send_ntfy(ntfy_topic, message, title)
+        send_ntfy(ntfy_topic, message, title, priority=2, tags="chart_with_upwards_trend")
     
     st_logger.info(f"Found {new_count} new results.")
     return new_count
@@ -256,7 +267,7 @@ while state.scheduled:
     
     countdown_message.text("Scraping...")
     results = find_results(state.params, message, show_new)
-    new_count = notify_new(results, ntfy_topic)
+    new_count = notify_new(results, ntfy_topic, 4)
 
     start_schedule()
     if len(results) > 0 and new_count > 0:
