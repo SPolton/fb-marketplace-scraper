@@ -32,8 +32,8 @@ PORT = int(getenv("PORT", 8000))
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 logger = logging.getLogger(__name__)
@@ -104,10 +104,10 @@ def crawl_marketplace_new_results(city: str, category: str, query: str) -> JSONR
             logger.info(f"Accessing database with search_id {search_id}")
 
             remove_stale_results(search_id, results)
+            set_all_not_new(search_id)
             insert_new_results(search_id, results)
             new_results = get_new_results(search_id)
             db_results = get_results(search_id)
-            set_all_not_new(search_id)
 
             logger.info(f"Found {len(new_results)} new listings.")
             return JSONResponse(db_results)
@@ -137,11 +137,12 @@ def crawl_marketplace_logic(city, category, query):
     if category=="test":
         time.sleep(1)
         return [{
-            "image": "https://scontent.fyyc8-1.fna.fbcdn.net/v/t45.5328-4/459002811_1615008492394078_3238608714812733174_n.jpg?stp=c0.43.261.261a_dst-jpg_p261x260&_nc_cat=111&ccb=1-7&_nc_sid=247b10&_nc_ohc=xmu2EIsIktQQ7kNvgF31Fam&_nc_ht=scontent.fyyc8-1.fna&_nc_gid=AzQb3MuKJAjgBnhI531M_H-&oh=00_AYA6PGkYXBpPw7PuF3-d_n4gp0LV7fw7qrylUGSOW47keQ&oe=66E564BA",
+            "order": 3,
+            "url": "https://www.facebook.com/marketplace/item/1029513038667252/",
             "title": "Apple iPad 7th Gen",
             "price": "CA$120",
-            "url": "https://www.facebook.com/marketplace/item/1029513038667252/",
             "location": city,
+            "image": "https://scontent.fyyc8-1.fna.fbcdn.net/v/t45.5328-4/459002811_1615008492394078_3238608714812733174_n.jpg?stp=c0.43.261.261a_dst-jpg_p261x260&_nc_cat=111&ccb=1-7&_nc_sid=247b10&_nc_ohc=xmu2EIsIktQQ7kNvgF31Fam&_nc_ht=scontent.fyyc8-1.fna&_nc_gid=AzQb3MuKJAjgBnhI531M_H-&oh=00_AYA6PGkYXBpPw7PuF3-d_n4gp0LV7fw7qrylUGSOW47keQ&oe=66E564BA",
             "is_new": True
         }]
 
@@ -151,7 +152,7 @@ def crawl_marketplace_logic(city, category, query):
         with sync_playwright() as p:
             # Open a new browser page.
             logger.debug("Opening browser")
-            browser = p.firefox.launch(headless=False)
+            browser = p.firefox.launch(headless=True)
             context = browser.new_context()
             page = context.new_page()
             load_cookies(context)
@@ -267,7 +268,7 @@ def parse_listings(listings):
                 url_clean = url_part.split("/?")[0]
                 result["url"] = f"https://www.facebook.com{url_clean}/"
         else:
-            logger.warning(f"Listing {i} URL is None")
+            logger.debug(f"Listing {i} URL is None")
 
         if result["url"] is not None:
             # Get the text Elements
@@ -384,5 +385,5 @@ if __name__ == "__main__":
         "app:app",
         host = HOST,
         port = PORT,
-        log_level = "debug"
+        log_level = "info"
     )
