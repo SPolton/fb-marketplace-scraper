@@ -4,12 +4,13 @@ Date Created: 2024-01-24
 Date Modified: 2024-09-09
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.5.1
+Version: 1.5.2
 Usage: python app.py
 """
 
 import json, logging, os, time, uvicorn
 
+from argparse import ArgumentParser
 from os import getenv
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup, element
@@ -30,14 +31,8 @@ FB_PASSWORD = getenv('FB_PASSWORD')
 HOST = getenv('HOST', "127.0.0.1")
 PORT = int(getenv("PORT", 8000))
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-
 logger = logging.getLogger(__name__)
-
+show_window = False
 
 # Create an instance of the FastAPI class.
 app = FastAPI()
@@ -150,9 +145,10 @@ def crawl_marketplace_logic(city, category, query):
     try:
         # Initialize the session using Playwright.
         with sync_playwright() as p:
+            logger.debug("Opening browser.")
+
             # Open a new browser page.
-            logger.debug("Opening browser")
-            browser = p.firefox.launch(headless=True)
+            browser = p.firefox.launch(headless=show_window)
             context = browser.new_context()
             page = context.new_page()
             load_cookies(context)
@@ -163,7 +159,7 @@ def crawl_marketplace_logic(city, category, query):
             # Listen for dialog events and handle them
             def handle_dialog(dialog):
                 logger.debug(f"Dialog detected with type: {dialog.type}")
-                dialog.dismiss()  # or dialog.accept() based on the scenario
+                dialog.dismiss()
 
             page.on("dialog", handle_dialog)
 
@@ -195,15 +191,19 @@ def crawl_marketplace_logic(city, category, query):
                     pass
             else:
                 save_cookies(context)
-            
-            # TODO: Other popups are preventing scrolling.
-            # i.e. "Allow facebook.com to send notifications" popup
 
             # Scroll down page to load more listings
-            for _ in range(10):
+            for i in range(10):
                 page.keyboard.press("End")
-                logger.debug("Scroll...")
+                logger.debug(f"Scroll {i}...")
                 page.wait_for_load_state()
+
+                # Check for the loading image
+                loading_image = page.query_selector('img[alt="Loading more items"]')
+                if loading_image:
+                    logger.debug("Loading image detected.")
+                else:
+                    logger.debug("No loading image.")
 
             page.wait_for_load_state()
             html = page.content()
@@ -339,7 +339,7 @@ def return_ip_information() -> JSONResponse:
         # Navigate to the URL.
         page.goto("https://www.ipburger.com/")
         # Wait for the page to load.
-        time.sleep(5)
+        page.wait_for_load_state("networkidle")
         # Get the HTML content of the page.
         html = page.content()
         # Beautify the HTML content.
@@ -371,13 +371,45 @@ def return_ip_information() -> JSONResponse:
         return JSONResponse(response)
 
 
+def setup_logging(level="INFO"):
+    """
+    Define the logging basicConfig with level and format.
+    Will default to INFO if an invalid level is passed.
+    If level is DEBUG then show_window is set to True.
+    Returns: The set logging level as a string.
+    """
+    global show_window
+
+    logging_level = getattr(logging, level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=logging_level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+
+    if logging_level == logging.DEBUG:
+        show_window = True
+    else:
+        show_window = False
+
+    return logging.getLevelName(logging_level)
+
+def get_terminal_args():
+    """Define and return command line args."""
+    parser = ArgumentParser()
+    parser.add_argument("-v", "--verbose", default="INFO", help="Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+
+    args = get_terminal_args()
+    level = setup_logging(args.verbose)
+
     # Init database
     try:
         init_db()
     except Exception as e:
         logger.warning(f"Database Error\n{e}")
-    print()
     
     # Run the app.
     uvicorn.run(
@@ -385,5 +417,5 @@ if __name__ == "__main__":
         "app:app",
         host = HOST,
         port = PORT,
-        log_level = "info"
+        log_level = level.lower()
     )
