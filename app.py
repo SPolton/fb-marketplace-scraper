@@ -1,14 +1,14 @@
 """
 Description: This file contains the code for Passivebot's Facebook Marketplace Scraper API.
 Date Created: 2024-01-24
-Date Modified: 2024-09-09
+Date Modified: 2024-09-14
 Author: Harminder Nijjar (v1.0.0)
 Modified by: SPolton
-Version: 1.5.2
+Version: 1.5.3
 Usage: python app.py
 """
 
-import json, logging, os, time, uvicorn
+import json, logging, os, uvicorn
 
 from argparse import ArgumentParser
 from os import getenv
@@ -32,14 +32,20 @@ HOST = getenv('HOST', "127.0.0.1")
 PORT = int(getenv("PORT", 8000))
 
 logger = logging.getLogger(__name__)
-show_window = False
+
+if logging.root.level == logging.DEBUG:
+    hide_window = False
+else:
+    hide_window = True
+logger.debug(f"hide_window == {hide_window}")
 
 # Create an instance of the FastAPI class.
 app = FastAPI()
+
 # Configure CORS
 origins = [
     "http://localhost",
-    "http://localhost:8000",
+    f"http://localhost:{PORT}",
     "http://localhost:3000",
 ]
 
@@ -130,7 +136,6 @@ def crawl_marketplace_logic(city, category, query):
 
     # Testing gui, remove later
     if category=="test":
-        time.sleep(1)
         return [{
             "order": 3,
             "url": "https://www.facebook.com/marketplace/item/1029513038667252/",
@@ -145,10 +150,10 @@ def crawl_marketplace_logic(city, category, query):
     try:
         # Initialize the session using Playwright.
         with sync_playwright() as p:
-            logger.debug("Opening browser.")
+            logger.debug(f"Opening browser with headless={hide_window}.")
 
             # Open a new browser page.
-            browser = p.firefox.launch(headless=show_window)
+            browser = p.firefox.launch(headless=hide_window)
             context = browser.new_context()
             page = context.new_page()
             load_cookies(context)
@@ -215,7 +220,7 @@ def crawl_marketplace_logic(city, category, query):
             )
             parsed = parse_listings(listings)
 
-            logger.debug("Closing browser and returning JSON\n")
+            logger.debug("Closing browser and returning JSON.")
             browser.close()
             return parsed
         
@@ -370,38 +375,31 @@ def return_ip_information() -> JSONResponse:
         # Return the IP information as JSON.
         return JSONResponse(response)
 
-
 def setup_logging(level="INFO"):
     """
     Define the logging basicConfig with level and format.
     Will default to INFO if an invalid level is passed.
-    If level is DEBUG then show_window is set to True.
     Returns: The set logging level as a string.
     """
-    global show_window
-
     logging_level = getattr(logging, level.upper(), logging.INFO)
     logging.basicConfig(
         level=logging_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-
-    if logging_level == logging.DEBUG:
-        show_window = True
-    else:
-        show_window = False
-
     return logging.getLevelName(logging_level)
 
 def get_terminal_args():
     """Define and return command line args."""
     parser = ArgumentParser()
-    parser.add_argument("-v", "--verbose", default="INFO", help="Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+    parser.add_argument("-v", "--verbose", default="INFO",
+                        help="Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+    # parser.add_argument("-s", "--show-window", action="store_true", help="Show the Playwright browser window.")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
 
+    # Set based on command line args, if any.
     args = get_terminal_args()
     level = setup_logging(args.verbose)
 
@@ -409,7 +407,7 @@ if __name__ == "__main__":
     try:
         init_db()
     except Exception as e:
-        logger.warning(f"Database Error\n{e}")
+        logger.error(f"Database Error\n{e}")
     
     # Run the app.
     uvicorn.run(

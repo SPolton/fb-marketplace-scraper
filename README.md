@@ -122,6 +122,14 @@ Usage
     streamlit run gui.py
     ```
 
+- **app.py Args**:
+
+  The following options can be used to pass command line arguments:
+	-v 	--verbose  Set the log level of terminal messages.
+
+		Available values are DEBUG, INFO, WARNING, ERROR, and CRITICAL (case insensitive). Defaults to INFO.
+    If set to DEBUG, the Playwright browser window will be visible when parsing.
+
 ### Notifications
 
 Open-source ntfy: recieve push notifications on your phone or desktop via scripts from any computer
